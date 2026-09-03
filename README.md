@@ -34,59 +34,22 @@ make deploy
 
 完整部署指导(买服务器、SSH 密钥、云安全组等)见 [docs/deployment.md](docs/deployment.md)。
 
-## 2 架构与设计
+## 2 主流框架与方案对比
 
-### 2.1 架构总览
+三张对比表回答同一组问题:服务端用什么内核(2.1)、按什么方案组织(2.2)、跑哪些协议(2.3)。
 
-```mermaid
-flowchart LR
-    subgraph 清单层[清单层:单一事实来源]
-        A["servers.json<br/>身份字段=用户填,凭据字段=回填生成"]
-    end
-    subgraph 生成层[生成层:本地执行,零网络]
-        B["cmd/vpn gen"] --> C["internal/conf<br/>校验/凭据回填/原子保存"]
-        B --> D["internal/server<br/>服务端产物"]
-        B --> E["internal/client<br/>客户端产物"]
-        C --> D
-        C --> E
-    end
-    subgraph 部署层[部署层]
-        F["cmd/vpn deploy"] --> G["internal/deploy<br/>ssh/scp 编排"]
-    end
-    subgraph 运行时[运行时:海外服务器,每台]
-        H["docker compose 起 sing-box 镜像<br/>host 网络,双协议监听"]
-    end
-    subgraph 客户端[客户端:全平台]
-        I["Clash 系 / sing-box 官方 / Hiddify<br/>及任意支持链接导入的 app"]
-    end
-    A --> B
-    D --> F --> G --> H
-    E --> I
-    I --> H
-```
+### 2.1 内核框架对比(服务端用哪个内核)
 
-### 2.2 模块职责
+| 内核 | 协议支持面 | 服务端部署形态 | 客户端生态 | 说明 |
+|---|---|---|---|---|
+| **sing-box**(本方案采用) | 全:VLESS/Reality、Hysteria2、SS、Trojan、VMess 等 | 官方镜像单容器,配置驱动 | sing-box 官方客户端/Hiddify 与其同源,Clash 系兼容其服务端 | 现代、跨平台支持最完善;协议/TLS/DNS 一体化 |
+| Xray-core | 全:VLESS/Reality 生态最成熟 + VMess/Trojan | 常配 3x-ui 等面板;可作库(需自行封装) | 客户端支持广 | 面板生态成熟,但服务端有状态,多用户/计量场景才需要 |
+| mihomo(Clash 系) | 客户端协议广;服务端 inbound 能力弱 | 定位客户端内核,不宜作服务端 | OpenClash 等客户端场景成熟 | 规则引擎最强,服务端不是其定位 |
+| Shadowsocks | 仅 SS 单协议 | 轻量单进程,部署最简单 | 客户端兼容最广(一切客户端都认 SS) | 单协议无逃生通道,流量特征明显、抗封锁弱 |
 
-| 包 | 职责 |
-|---|---|
-| `cmd/vpn` | CLI 编排:gen(生成全部产物)/ deploy(远程部署)/ doctor(环境自检);产物写盘与权限 |
-| `internal/conf` | 清单模型、校验、凭据回填、原子保存、节点反推(唯一被多方引用的包,凭据单一来源) |
-| `internal/server` | 服务端 sing-box 配置渲染 + docker-compose/deploy.sh/cert.sh |
-| `internal/client` | 客户端产物渲染:分享链接、base64 订阅、clash.yaml、sing-box.json |
-| `internal/deploy` | ssh/scp 逐台上传与远程执行 |
+**选型结论**:服务端选 sing-box,理由是可单容器承载全部目标协议、与主流客户端生态同源(官方客户端/Hiddify 同内核,Clash 系对接无障碍)、配置驱动可纯产物部署;Xray 内核留给"面板多用户"场景(见 2.2);mihomo 留给客户端侧;轻量 SS 服务端虽部署最简单,但单协议且抗封锁弱,不满足主通道与逃生通道并存的需求。
 
-### 2.3 工程决策(怎么实现)
-
-| 决策 | 理由 |
-|---|---|
-| 本地生成静态产物,不要面板/在线订阅 | 清单文件即"填写服务器信息"的载体,生成即分发;静态产物零运行时依赖,服务器可随时销毁重建;无订阅则无过期/鉴权/托管问题。未来要在线订阅,把 `sub.txt` 托管到任意静态 URL 即完成 |
-| 生成器零第三方依赖(纯标准库) | 配置均为固定结构文本,模板渲染足够;不引入 sing-box option 库(旧方案重依赖、构建标签、分钟级编译,本方案构建秒级)。正确性由"模板 + 渲染后 json.Valid 校验 + 一致性单测 + 服务器上 docker run check 最终把关"保证 |
-| 凭据只在本地生成回填(服务端无状态) | Reality 密钥/UUID 与 Hy2 密码全部在 `make gen` 时生成写回清单(0600 原子写,严格模式解析防拼错);服务器只消费静态 config.json。服务器可任意重建,凭据不变则已分发客户端免更新;服务端/客户端产物从同一清单渲染,凭据不可能漂移(单测黄金断言守护) |
-| 分流规则按客户端形态取舍 | clash.yaml 内置国内直连(GEOSITE,cn / GEOIP,CN),Clash 系自带 geodata 开箱可用;sing-box.json 用全局代理 + 内网直连(不依赖外置规则文件,官方 app 导入即用),需要国内分流的按文档追加 |
-
-> 服务端内核(sing-box)与协议集(Reality/Hy2)的选型推理见 2.4 与 2.5。
-
-### 2.4 主流方案对比(为什么不自建面板/手搓配置/买机场)
+### 2.2 主流方案对比(不自建面板 / 不手搓配置 / 不买机场)
 
 | 方案 | 服务端 | 多用户/订阅 | 部署与运维 | 客户端对接 | 适用场景 |
 |---|---|---|---|---|---|
@@ -97,32 +60,18 @@ flowchart LR
 
 **选型结论**:个人自用场景在"可控性 + 运维成本 + 订阅托管"三者间取舍,本方案取"可控 + 一条命令部署 + 免托管";需要多人共享与计量再上 xray 面板;完全不想管服务器则直接买机场。
 
-### 2.5 协议对比(为什么是 Reality + Hy2)
+### 2.3 协议对比(为什么是 Reality + Hy2)
 
 | 协议 | 传输层 | 抗封锁能力 | 性能 | 证书 | 客户端支持面 | 本方案定位 |
 |---|---|---|---|---|---|---|
 | **VLESS+Reality** | TCP | 最强:TLS 指纹伪装真实站点,主动探测难识别 | 高 | 无需 | 全主流(2024+ 的 Clash 系、sing-box 系、Hiddify) | **主通道** |
 | **Hysteria2** | QUIC/UDP | 强:UDP 特征,弱网抗丢包 | 高(弱网优势) | 自签即可 | 广(Clash 内核 v1.18+、sing-box 系、Hiddify) | **逃生/提速通道** |
-| Shadowsocks | TCP+UDP | 弱:流量特征明显,易被针对性封锁 | 中 | 无需 | 最广(一切客户端) | 未采用:特征明显易被封锁,Reality/Hy2 已覆盖全目标客户端 |
 | Trojan | TCP | 中:伪装 HTTPS | 中 | 需域名证书 | 广 | 未采用:与 Reality 能力重叠,多出证书依赖 |
 | VMess+WS+TLS | TCP(WebSocket) | 中:依赖域名与 TLS | 中 | 需域名证书 | 广 | 未采用:同上 |
 | TUIC | QUIC/UDP | 中 | 高 | 自签 | 较窄 | 未采用:与 Hy2 定位重叠,客户端支持面更窄 |
+| Shadowsocks | TCP+UDP | 弱:流量特征明显,易被针对性封锁 | 中 | 无需 | 最广(一切客户端) | 未采用:特征明显易被封锁,Reality/Hy2 已覆盖全目标客户端 |
 
 **选型结论**:Reality 抗封锁最强且零证书,作主通道;Hy2 走 QUIC,弱网与大流量场景互补。双通道覆盖全部目标客户端且无证书依赖;SS 特征明显易被封锁,收益与 Reality/Hy2 重叠,不做;Trojan/VMess 收益与 Reality 重叠还需域名证书,不做(各客户端对双通道的支持矩阵见 3.2)。
-
-### 2.6 安全模型
-
-- 本地:清单与全部含凭据产物 0600;凭据不进 git(`servers.json` 已忽略)
-- 传输:凭据即认证(Reality 公钥体系 / SS 密码 / Hy2 密码);Reality 流量伪装为 TLS 访问公开站点
-- 服务器:仅暴露监听端口,无面板无多余服务面;容器只读挂载配置
-- 部署链路:SSH 非交互(BatchMode)、首次指纹 accept-new、超时保护、错误即停;脚本内嵌值经校验与 shell 转义双重防注入
-- H2 证书:默认自签(insecure 跳过校验);要受信证书时清单声明 `server_name` 并自行放置(消除自签的中间人风险面)
-
-### 2.7 扩展方向(需要时再加)
-
-- 新增协议通道:conf 通道结构 + server 片段 + client 渲染分支同构扩展(如 VMess+WS+TLS,需域名证书)
-- 在线订阅更新:托管 `sub.txt` 到任意静态 URL,无需本仓库代码
-- 多用户:清单按用户拆多份分别 gen,不做面板
 
 ## 3 平台与客户端生态
 
@@ -169,7 +118,38 @@ iOS 无 Hiddify 条件时用区外商店的 sing-box(SFI)或 Shadowrocket 等第
 | 软路由让全屋设备代理 | OpenClash 导入 clash.yaml 或订阅 |
 | 命令行/服务器环境 | sing-box CLI 跑 sing-box.json,或 mihomo 跑 clash.yaml |
 
-## 4 目录结构
+## 4 架构与设计
+
+### 4.1 架构总览
+
+```mermaid
+flowchart LR
+    subgraph 清单层[清单层:单一事实来源]
+        A["servers.json<br/>身份字段=用户填,凭据字段=回填生成"]
+    end
+    subgraph 生成层[生成层:本地执行,零网络]
+        B["cmd/vpn gen"] --> C["internal/conf<br/>校验/凭据回填/原子保存"]
+        B --> D["internal/server<br/>服务端产物"]
+        B --> E["internal/client<br/>客户端产物"]
+        C --> D
+        C --> E
+    end
+    subgraph 部署层[部署层]
+        F["cmd/vpn deploy"] --> G["internal/deploy<br/>ssh/scp 编排"]
+    end
+    subgraph 运行时[运行时:海外服务器,每台]
+        H["docker compose 起 sing-box 镜像<br/>host 网络,双协议监听"]
+    end
+    subgraph 客户端[客户端:全平台]
+        I["Clash 系 / sing-box 官方 / Hiddify<br/>及任意支持链接导入的 app"]
+    end
+    A --> B
+    D --> F --> G --> H
+    E --> I
+    I --> H
+```
+
+### 4.2 目录结构
 
 ```text
 vpn/
@@ -200,6 +180,31 @@ dist/
 ├── clash.yaml             Clash 系订阅(节点组 + 国内直连分流规则)
 └── sing-box.json          sing-box 官方客户端完整配置
 ```
+
+### 4.3 工程决策(怎么实现)
+
+| 决策 | 理由 |
+|---|---|
+| 本地生成静态产物,不要面板/在线订阅 | 清单文件即"填写服务器信息"的载体,生成即分发;静态产物零运行时依赖,服务器可随时销毁重建;无订阅则无过期/鉴权/托管问题。未来要在线订阅,把 `sub.txt` 托管到任意静态 URL 即完成 |
+| 生成器零第三方依赖(纯标准库) | 配置均为固定结构文本,模板渲染足够;不引入 sing-box option 库(旧方案重依赖、构建标签、分钟级编译,本方案构建秒级)。正确性由"模板 + 渲染后 json.Valid 校验 + 一致性单测 + 服务器上 docker run check 最终把关"保证 |
+| 凭据只在本地生成回填(服务端无状态) | Reality 密钥/UUID 与 Hy2 密码全部在 `make gen` 时生成写回清单(0600 原子写,严格模式解析防拼错);服务器只消费静态 config.json。服务器可任意重建,凭据不变则已分发客户端免更新;服务端/客户端产物从同一清单渲染,凭据不可能漂移(单测黄金断言守护) |
+| 分流规则按客户端形态取舍 | clash.yaml 内置国内直连(GEOSITE,cn / GEOIP,CN),Clash 系自带 geodata 开箱可用;sing-box.json 用全局代理 + 内网直连(不依赖外置规则文件,官方 app 导入即用),需要国内分流的按文档追加 |
+
+> 内核、方案、协议三个层面的选型推理见第 2 章,本章只记录"怎么实现"层面的工程决策。
+
+### 4.4 安全模型
+
+- 本地:清单与全部含凭据产物 0600;凭据不进 git(`servers.json` 已忽略)
+- 传输:凭据即认证(Reality 公钥体系 / Hy2 密码);Reality 流量伪装为 TLS 访问公开站点
+- 服务器:仅暴露监听端口,无面板无多余服务面;容器只读挂载配置
+- 部署链路:SSH 非交互(BatchMode)、首次指纹 accept-new、超时保护、错误即停;脚本内嵌值经校验与 shell 转义双重防注入
+- H2 证书:默认自签(insecure 跳过校验);要受信证书时清单声明 `server_name` 并自行放置(消除自签的中间人风险面)
+
+### 4.5 扩展方向(需要时再加)
+
+- 新增协议通道:conf 通道结构 + server 片段 + client 渲染分支同构扩展(如 VMess+WS+TLS,需域名证书)
+- 在线订阅更新:托管 `sub.txt` 到任意静态 URL,无需本仓库代码
+- 多用户:清单按用户拆多份分别 gen,不做面板
 
 ## 5 文档地图
 

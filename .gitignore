@@ -27,6 +27,15 @@ go.work.sum
 # env file
 .env
 
+# IDE
+.idea/
+
+# 生成产物(服务端/客户端配置,含凭据,不入库)
+/dist/
+
+# 实际服务器清单(含自动回填的凭据,勿入库;只提交 example-servers.json)
+/servers.json
+
 # Editor/IDE
 # .idea/
 # .vscode/

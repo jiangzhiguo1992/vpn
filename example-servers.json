@@ -1,0 +1,23 @@
+{
+  "servers": [
+    {
+      "name": "hk-01",
+      "location": "香港",
+      "address": "1.2.3.4",
+      "ssh": {
+        "user": "root",
+        "port": 22
+      },
+      "vless": {
+        "port": 443,
+        "server_name": "www.apple.com"
+      },
+      "shadowsocks": {
+        "port": 8388
+      },
+      "hysteria2": {
+        "port": 8443
+      }
+    }
+  ]
+}

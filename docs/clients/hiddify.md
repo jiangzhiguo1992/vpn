@@ -1,5 +1,7 @@
 # Hiddify 对接
 
+> 官网:<https://hiddify.com/> | GitHub:<https://github.com/hiddify/hiddify-app>
+
 Hiddify(sing-box 内核 fork)覆盖 Windows / macOS / Linux / Android / iOS 全平台,
 自带成熟的分流域名规则与广告拦截,开箱即用,是移动端最省心的选择。
 双通道(vless+Reality / hysteria2)全部支持。

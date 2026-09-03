@@ -351,3 +351,63 @@ func TestDeployScript_证书分支(t *testing.T) {
 		t.Fatal("无 h2 时不应放行 8443")
 	}
 }
+
+// ===== compose/deploy 端口口径 =====
+
+// TestComposeYAML_无h2无证书挂载 无 h2 通道时 compose 不含证书挂载行。
+func TestComposeYAML_无h2无证书挂载(t *testing.T) {
+	s := fixtureServer(t)
+	s.Hysteria2 = nil
+	compose := composeYAML(s)
+	if strings.Contains(compose, "./cert.pem") {
+		t.Fatalf("无 h2 不应挂载证书:\n%s", compose)
+	}
+}
+
+// TestDeployScript_自定义端口 端口直接取自清单非默认值时防火墙放行随之
+// 变化(deploy.sh 端口与 config.json 监听一致,防放行口径漂移)。
+func TestDeployScript_自定义端口(t *testing.T) {
+	s := fixtureServer(t)
+	s.VLESS.Port = 7443
+	s.Hysteria2.Port = 9443
+	sh, err := deployScript(s)
+	if err != nil {
+		t.Fatalf("deployScript: %v", err)
+	}
+	for _, want := range []string{"for p in 7443", "for p in 9443"} {
+		if !strings.Contains(sh, want) {
+			t.Fatalf("deploy.sh 缺 %q", want)
+		}
+	}
+	for _, bad := range []string{"for p in 443", "for p in 8443"} {
+		if strings.Contains(sh, bad) {
+			t.Fatalf("deploy.sh 不应含默认端口放行 %q", bad)
+		}
+	}
+}
+
+// ===== certScript CN 契约 =====
+
+// TestCertScript_受信证书CN 受信证书模式 certScript CN 取 server_name
+// (函数契约:受信分支产品路径不可达,但函数本身支持)。
+func TestCertScript_受信证书CN(t *testing.T) {
+	s := &conf.Server{Address: "1.2.3.4", Hysteria2: &conf.H2Config{ServerName: "vpn.example.com"}}
+	cs := certScript(s)
+	if !strings.Contains(cs, "CN='vpn.example.com'") {
+		t.Fatalf("cert.sh CN 应为 server_name,实际:\n%s", cs)
+	}
+}
+
+// ===== WriteArtifacts 目录创建 =====
+
+// TestWriteArtifacts_嵌套目录自动创建 目录不存在时逐级创建(MkdirAll)。
+func TestWriteArtifacts_嵌套目录自动创建(t *testing.T) {
+	s := fixtureServer(t)
+	dir := filepath.Join(t.TempDir(), "a", "b", "hk-01")
+	if err := WriteArtifacts(dir, s); err != nil {
+		t.Fatalf("写产物失败: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "config.json")); err != nil {
+		t.Fatalf("嵌套目录下缺 config.json: %v", err)
+	}
+}

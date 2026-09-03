@@ -180,3 +180,173 @@ var errMock = &mockError{}
 type mockError struct{}
 
 func (m *mockError) Error() string { return "mock 失败" }
+
+// ===== 命令参数边界(端口与目标形态) =====
+
+// TestSCPCommand_默认端口 验证 SSH 端口 22/0/缺省(nil)均不带 -P 标志
+// (scp 端口标志大写 -P,仅在非默认端口附加)。
+func TestSCPCommand_默认端口(t *testing.T) {
+	cases := []struct {
+		name string
+		srv  *conf.Server
+	}{
+		{"端口 22(显式)", fixtureServer()},
+		{"端口 0(视为默认 22)", func() *conf.Server {
+			s := fixtureServer()
+			s.SSH.Port = 0
+			return s
+		}()},
+		{"无 ssh 块", func() *conf.Server {
+			s := fixtureServer()
+			s.SSH = nil
+			return s
+		}()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			args := scpCommand(tc.srv, "config.json")
+			joined := strings.Join(args, " ")
+			if strings.Contains(joined, "-P") {
+				t.Fatalf("默认端口不应带 -P 标志: %v", args)
+			}
+			if !strings.Contains(joined, "root@hk.example.com:"+RemoteDir+"/") {
+				t.Fatalf("scp 目标缺远程目录: %v", args)
+			}
+		})
+	}
+}
+
+// TestSSHCommand_端口0 验证 SSH.Port=0 视为默认 22,ssh 不带小写 -p 标志。
+func TestSSHCommand_端口0(t *testing.T) {
+	s := fixtureServer()
+	s.SSH.Port = 0
+	args := sshCommand(s, "echo hi")
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "-p") {
+		t.Fatalf("端口 0 不应带 -p 标志: %v", args)
+	}
+	if !strings.Contains(joined, "root@hk.example.com") {
+		t.Fatalf("ssh 目标缺失: %v", args)
+	}
+}
+
+// TestSSHCommand_域名无括号 验证 sshTarget 仅对 IPv6 目标加括号,域名保持裸形态。
+func TestSSHCommand_域名无括号(t *testing.T) {
+	ipv6 := fixtureServer()
+	ipv6.Address = "2001:db8::1"
+	cases := []struct {
+		name string
+		srv  *conf.Server
+		want string
+	}{
+		{"域名不加括号", fixtureServer(), "root@hk.example.com"},
+		{"IPv6 加括号", ipv6, "root@[2001:db8::1]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sshTarget(tc.srv); got != tc.want {
+				t.Fatalf("sshTarget = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ===== Run(目录过滤 / 空目录 / nil 条目,mock) =====
+
+// TestRun_跳过杂项文件 验证 os.ReadDir 后跳过子目录与 .DS_Store,
+// scp 参数只含普通产物文件。
+func TestRun_跳过杂项文件(t *testing.T) {
+	s := fixtureServer()
+	outDir := t.TempDir()
+	prodDir := filepath.Join(outDir, "servers", "hk-01")
+	if err := os.MkdirAll(prodDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(prodDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	for _, f := range []string{"deploy.sh", "config.json", ".DS_Store"} {
+		if err := os.WriteFile(filepath.Join(prodDir, f), []byte("x"), 0o644); err != nil {
+			t.Fatalf("写 %s: %v", f, err)
+		}
+	}
+	var scpArgs string
+	oldRunCmd := runCmd
+	runCmd = func(name string, args []string) error {
+		if name == "scp" {
+			scpArgs = strings.Join(args, " ")
+		}
+		return nil
+	}
+	defer func() { runCmd = oldRunCmd }()
+
+	inv := &conf.Inventory{Servers: []*conf.Server{s}}
+	if err := Run(inv, outDir); err != nil {
+		t.Fatalf("Run 失败: %v", err)
+	}
+	for _, want := range []string{"deploy.sh", "config.json"} {
+		if !strings.Contains(scpArgs, want) {
+			t.Fatalf("scp 参数缺产物 %q: %s", want, scpArgs)
+		}
+	}
+	for _, forbid := range []string{".DS_Store", "sub"} {
+		if strings.Contains(scpArgs, forbid) {
+			t.Fatalf("scp 参数不应含 %q: %s", forbid, scpArgs)
+		}
+	}
+}
+
+// TestRun_产物目录为空 验证目录存在但无产物时中止且不发起上传/部署。
+//
+// 注:Run 先执行"建远程目录"的 ssh 调用后才枚举产物,故 mock 计数为 1
+// (仅建目录调用),scp 上传与远程 deploy.sh 均不会发生。
+func TestRun_产物目录为空(t *testing.T) {
+	s := fixtureServer()
+	outDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outDir, "servers", "hk-01"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	var calls []string
+	oldRunCmd := runCmd
+	runCmd = func(name string, args []string) error {
+		calls = append(calls, name)
+		return nil
+	}
+	defer func() { runCmd = oldRunCmd }()
+
+	inv := &conf.Inventory{Servers: []*conf.Server{s}}
+	err := Run(inv, outDir)
+	if err == nil || !strings.Contains(err.Error(), "产物目录为空") {
+		t.Fatalf("期望产物目录为空错误,实际: %v", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("调用数 = %d, want 1(仅建目录 ssh,不上传不部署): %v", len(calls), calls)
+	}
+}
+
+// TestRun_nil条目跳过 验证清单含 nil 条目时跳过该台不 panic,只部署有效台。
+func TestRun_nil条目跳过(t *testing.T) {
+	outDir := t.TempDir()
+	prodDir := filepath.Join(outDir, "servers", "hk-01")
+	if err := os.MkdirAll(prodDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(prodDir, "deploy.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("写产物: %v", err)
+	}
+	var calls []string
+	oldRunCmd := runCmd
+	runCmd = func(name string, args []string) error {
+		calls = append(calls, name)
+		return nil
+	}
+	defer func() { runCmd = oldRunCmd }()
+
+	inv := &conf.Inventory{Servers: []*conf.Server{fixtureServer(), nil}}
+	if err := Run(inv, outDir); err != nil {
+		t.Fatalf("Run 失败: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("调用数 = %d, want 3(仅部署 1 台,跳过 nil 条目): %v", len(calls), calls)
+	}
+}

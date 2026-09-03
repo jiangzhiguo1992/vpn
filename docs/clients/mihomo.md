@@ -1,5 +1,7 @@
 # mihomo / OpenClash 对接(Linux 与网关盒子)
 
+> mihomo 官网:<https://wiki.metacubex.one/> | GitHub:<https://github.com/MetaCubeX/mihomo>
+
 mihomo 是 Clash 系内核(Meta 内核),面向无 GUI 场景与网关盒子(软路由/OpenWrt)。
 无头使用场景分两类:
 

@@ -354,3 +354,175 @@ func TestCrossArtifact_一致性(t *testing.T) {
 		t.Fatal("clash.yaml 缺 short-id(漂移)")
 	}
 }
+
+// ===== 注入安全(特殊字符跨产物) =====
+
+// TestShareLink_h2密码特殊字符 空格必须 %20 编码进 userinfo(QueryEscape 产出
+// + 而 userinfo 段不还原 +,link.go 有专门 ReplaceAll);解码后与原文全等。
+func TestShareLink_h2密码特殊字符(t *testing.T) {
+	n := fixtureNodes()[1]
+	pass := "p@ss word+&密码"
+	n.Password = pass
+	link := ShareLink(n)
+	if strings.Contains(link, " ") {
+		t.Fatalf("链接含未编码空格: %s", link)
+	}
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("解析失败: %v (%s)", err, link)
+	}
+	if u.User.Username() != pass {
+		t.Fatalf("auth 解码 = %q, want %q(空格/%%2B/& 均须往返无损)", u.User.Username(), pass)
+	}
+}
+
+// TestCrossArtifact_特殊字符注入 含引号/反斜杠的 Name 与 Password 跨产物
+// 渲染安全(黄金注入测试):sing-box JSON 合法且值还原、clash 文本为 JSON
+// 转义形态、链接 fragment 经 PathEscape 可解析还原。
+func TestCrossArtifact_特殊字符注入(t *testing.T) {
+	nodes := fixtureNodes()
+	nodes[0].Name = `hk"x`      // 引号进 tag/name/fragment(PathEscape)
+	nodes[1].Password = `p"a\b` // 引号与反斜杠进 password(JSON 转义)
+	links, err := RenderLinks(nodes)
+	if err != nil {
+		t.Fatalf("RenderLinks: %v", err)
+	}
+	sb, err := RenderSingBox(nodes)
+	if err != nil {
+		t.Fatalf("RenderSingBox: %v", err)
+	}
+	// parseJSONMap 即兜底 json.Valid;取值须与输入一致(无转义污染/截断)
+	m := parseJSONMap(t, sb)
+	if got := walk(m, "outbounds", "1", "tag"); got != nodes[0].Name {
+		t.Fatalf("vless tag = %v, want %q", got, nodes[0].Name)
+	}
+	if got := walk(m, "outbounds", "2", "password"); got != nodes[1].Password {
+		t.Fatalf("h2 password = %v, want %q", got, nodes[1].Password)
+	}
+	clash, err := RenderClash(nodes)
+	if err != nil {
+		t.Fatalf("RenderClash: %v", err)
+	}
+	// clash.yaml:特殊字符须以 JSON 转义形态出现(与 YAML 双引号串转义集相同)
+	for _, want := range []string{`name: "hk\"x"`, `password: "p\"a\\b"`} {
+		if !strings.Contains(string(clash), want) {
+			t.Fatalf("clash.yaml 缺转义形态 %q\n%s", want, clash)
+		}
+	}
+	// Name 经 url.PathEscape 进 fragment,解析后应还原原名(含引号)
+	u, err := url.Parse(strings.SplitN(links, "\n", 2)[0])
+	if err != nil {
+		t.Fatalf("链接解析失败: %v", err)
+	}
+	if u.Fragment != nodes[0].Name {
+		t.Fatalf("fragment = %q, want %q", u.Fragment, nodes[0].Name)
+	}
+}
+
+// ===== 字段缺失防御(渲染器校验) =====
+
+// TestRenderClash_字段缺失 凭据缺失时报错而非产出残缺配置(表驱动分例)。
+func TestRenderClash_字段缺失(t *testing.T) {
+	cases := []struct {
+		name string
+		idx  int
+		mut  func(*conf.Node)
+	}{
+		{"vless 缺 UUID", 0, func(n *conf.Node) { n.UUID = "" }},
+		{"vless 缺 PublicKey", 0, func(n *conf.Node) { n.PublicKey = "" }},
+		{"vless 缺 ShortID", 0, func(n *conf.Node) { n.ShortID = "" }},
+		{"h2 缺 Password", 1, func(n *conf.Node) { n.Password = "" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes := fixtureNodes()
+			tc.mut(&nodes[tc.idx])
+			_, err := RenderClash(nodes)
+			if err == nil || !strings.Contains(err.Error(), "字段缺失") {
+				t.Fatalf("期望错误含 \"字段缺失\",实际: %v", err)
+			}
+		})
+	}
+}
+
+// TestRenderSingBox_字段缺失 sing-box 渲染同口径防御(singBoxOutbound 校验)。
+func TestRenderSingBox_字段缺失(t *testing.T) {
+	cases := []struct {
+		name string
+		idx  int
+		mut  func(*conf.Node)
+	}{
+		{"vless 缺 UUID", 0, func(n *conf.Node) { n.UUID = "" }},
+		{"vless 缺 PublicKey", 0, func(n *conf.Node) { n.PublicKey = "" }},
+		{"vless 缺 ShortID", 0, func(n *conf.Node) { n.ShortID = "" }},
+		{"h2 缺 Password", 1, func(n *conf.Node) { n.Password = "" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes := fixtureNodes()
+			tc.mut(&nodes[tc.idx])
+			_, err := RenderSingBox(nodes)
+			if err == nil || !strings.Contains(err.Error(), "字段缺失") {
+				t.Fatalf("期望错误含 \"字段缺失\",实际: %v", err)
+			}
+		})
+	}
+}
+
+// ===== ShareLink 兜底与省略 =====
+
+// TestShareLink_空Name兜底 Name 为空时 fragment 用 Address:Port 兜底。
+func TestShareLink_空Name兜底(t *testing.T) {
+	n := fixtureNodes()[0]
+	n.Name = ""
+	u, err := url.Parse(ShareLink(n))
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if u.Fragment != "hk.example.com:443" {
+		t.Fatalf("fragment = %q, want \"hk.example.com:443\"", u.Fragment)
+	}
+}
+
+// TestShareLink_vless省略参数 vless 可选参数全空时 query 省略对应键。
+func TestShareLink_vless省略参数(t *testing.T) {
+	n := fixtureNodes()[0]
+	n.ServerName, n.PublicKey, n.ShortID = "", "", ""
+	u, err := url.Parse(ShareLink(n))
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	q := u.Query()
+	for _, k := range []string{"sni", "pbk", "sid"} {
+		if q.Has(k) {
+			t.Fatalf("query 不应含 %s: %s", k, ShareLink(n))
+		}
+	}
+	// 常量参数仍在(链接可用性)
+	if q.Get("type") != "tcp" || q.Get("security") != "reality" {
+		t.Fatalf("常量参数丢失: %s", ShareLink(n))
+	}
+}
+
+// ===== RenderSingBox h2 混淆 =====
+
+// TestRenderSingBox_h2混淆 h2 混淆节点渲染 obfs(type=salamander)且自签
+// insecure 保持 true。
+func TestRenderSingBox_h2混淆(t *testing.T) {
+	nodes := fixtureNodes()
+	nodes[1].Obfs = "obfs-secret"
+	data, err := RenderSingBox(nodes)
+	if err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	m := parseJSONMap(t, data)
+	if got := walk(m, "outbounds", "2", "obfs", "type"); got != "salamander" {
+		t.Fatalf("obfs.type = %v", got)
+	}
+	if got := walk(m, "outbounds", "2", "obfs", "password"); got != "obfs-secret" {
+		t.Fatalf("obfs.password = %v", got)
+	}
+	if got := walk(m, "outbounds", "2", "tls", "insecure"); got != true {
+		t.Fatal("自签混淆节点应保持 insecure=true")
+	}
+}

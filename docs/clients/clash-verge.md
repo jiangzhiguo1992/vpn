@@ -1,5 +1,7 @@
 # Clash Verge Rev 对接(Windows / macOS / Linux)
 
+> 官网:<https://www.clashverge.dev/> | GitHub:<https://github.com/clash-verge-rev/clash-verge-rev>
+
 Clash Verge Rev(内核 mihomo)是桌面三平台最常用的 Clash 系客户端,
 自带 geodata(geoip/geosite 自动更新)与可视化规则管理。
 需较新内核版本(2025 年后发布的常规版本即可):vless+Reality、hysteria2 均支持。

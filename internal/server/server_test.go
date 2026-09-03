@@ -243,6 +243,10 @@ func TestWriteArtifacts_文件与权限(t *testing.T) {
 		"docker-compose-plugin",
 		"check -c /etc/sing-box/config.json",
 		"force-recreate",
+		// 校验容器须与运行容器(compose)同挂载证书:config 的
+		// certificate_path 指向容器内 /etc/sing/,check 读不到会误报
+		`-v "$PWD/cert.pem:/etc/sing/cert.pem:ro"`,
+		`-v "$PWD/key.pem:/etc/sing/key.pem:ro"`,
 	} {
 		if !strings.Contains(string(sh), want) {
 			t.Fatalf("deploy.sh 缺关键内容 %q", want)
@@ -268,6 +272,10 @@ func TestWriteArtifacts_证书模式(t *testing.T) {
 	if !strings.Contains(string(sh), "受信证书") || !strings.Contains(string(sh), "cert.pem/key.pem") {
 		t.Fatal("deploy.sh 应引导放置受信证书")
 	}
+	// 受信证书模式同样走容器内 /etc/sing/ 挂载,校验命令须挂证书
+	if !strings.Contains(string(sh), `-v "$PWD/cert.pem:/etc/sing/cert.pem:ro"`) {
+		t.Fatal("deploy.sh 校验命令缺证书挂载(受信证书模式)")
+	}
 	// 无 h2:先自签生成再改无 h2,残留 cert.sh 应被清理
 	s2 := fixtureServer(t)
 	s2.Hysteria2 = nil
@@ -276,6 +284,11 @@ func TestWriteArtifacts_证书模式(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "cert.sh")); !os.IsNotExist(err) {
 		t.Fatal("无 h2 后残留 cert.sh 未清理")
+	}
+	// 无 h2:校验命令无证书挂载(无 hy2 inbound,config 不含 /etc/sing/)
+	sh2, _ := os.ReadFile(filepath.Join(dir, "deploy.sh"))
+	if strings.Contains(string(sh2), `-v "$PWD/cert.pem`) {
+		t.Fatal("无 h2 时 deploy.sh 校验命令不应挂载证书")
 	}
 }
 

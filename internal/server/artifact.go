@@ -13,7 +13,9 @@
 //     插件补装(存量 docker 仅 docker-compose v1 时 apt 装
 //     docker-compose-plugin,docker compose 子命令才能用)、开机自启
 //     兜底、镜像 ghcr 拉取失败回退 docker.io 并 retag、up 前 docker
-//     run check 语法校验、up --force-recreate(配置变化不触发 compose 重建)
+//     run check 语法校验(H2 通道挂载证书,校验容器与运行容器挂载语义
+//     一致,防 check 误报 /etc/sing/cert.pem 缺失)、up --force-recreate
+//     (配置变化不触发 compose 重建)
 //   - 产物文件权限:config.json 0600(含凭据);脚本 0755;compose 0644;
 //     全部显式 Chmod(WriteFile 的 mode 仅创建时生效,重复 gen 会残留
 //     旧权限)
@@ -123,6 +125,16 @@ func deployScript(s *conf.Server) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// 校验容器的证书挂载段:config 的 certificate_path 指向容器内
+	// /etc/sing/(compose 挂载语义),校验容器不挂证书则 check 读不到
+	// 而误报证书缺失;有 H2 才挂(自签/受信两态文件名一致,且第 3 步
+	// 证书就位先于校验,挂载不会因缺文件失败)
+	checkMounts := ""
+	if s.Hysteria2 != nil {
+		checkMounts = ` \
+  -v "$PWD/cert.pem:/etc/sing/cert.pem:ro" \
+  -v "$PWD/key.pem:/etc/sing/key.pem:ro"`
+	}
 	tcpList := strings.Join(tcpPorts, " ")
 	udpList := strings.Join(udpPorts, " ")
 	script := fmt.Sprintf(`#!/bin/sh
@@ -194,9 +206,12 @@ if ! $SUDO docker image inspect "$IMAGE" >/dev/null 2>&1; then
   fi
 fi
 
-# 5. 服务端配置语法校验(up 前快速失败,避免启动坏容器后才在日志暴露)
+# 5. 服务端配置语法校验(up 前快速失败,避免启动坏容器后才在日志暴露;
+#    H2 通道挂载证书,校验容器与运行容器(compose)挂载语义须一致)
 echo "==> 校验服务端配置语法 ..."
-$SUDO docker run --rm -v "$PWD/config.json:%s:ro" "$IMAGE" check -c %s
+$SUDO docker run --rm \
+  -v "$PWD/config.json:%s:ro"%s \
+  "$IMAGE" check -c %s
 
 # 6. 启动(--force-recreate 强制重建:config.json 内容变化不触发 compose
 #    重建,不强制则重新部署后 sing-box 仍跑旧配置)
@@ -211,7 +226,7 @@ $SUDO docker compose logs --tail=10
 		tcpList, udpList, tcpList, udpList,
 		certBlock,
 		ImageRef, ImageMirror, ImageMirror, ImageMirror,
-		remoteConfigPath, remoteConfigPath)
+		remoteConfigPath, checkMounts, remoteConfigPath)
 	return script, nil
 }
 

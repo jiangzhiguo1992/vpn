@@ -388,7 +388,10 @@ func TestInventory_Validate_凭据与伪装站点(t *testing.T) {
 		}, "空白"},
 		{"h2 server_name 带 URL", func(inv *Inventory) {
 			inv.Servers[0].Hysteria2.ServerName = "https://x.com"
-		}, "URL scheme"},
+		}, "非法"},
+		{"h2 server_name 带端口误填", func(inv *Inventory) {
+			inv.Servers[0].Hysteria2.ServerName = "vpn.example.com:8443"
+		}, "非法"},
 		{"h2 server_name 正常域名", func(inv *Inventory) {
 			inv.Servers[0].Hysteria2.ServerName = "vpn.example.com"
 		}, ""},

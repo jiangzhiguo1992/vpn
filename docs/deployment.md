@@ -39,7 +39,7 @@ make check     # build + vet + test + fmt 全量验证(改动后必跑)
 |---|---|---|
 | SSH 服务 | 已开启（云服务器默认开启） | 下述 `ssh` 命令验证 |
 | 用户权限 | root 或 **NOPASSWD sudo**（deploy.sh 用 `sudo -n` 非交互执行） | `sudo -n true` 验证（无输出=直过，报 sudoers/需密码=无 NOPASSWD） |
-| **云安全组/防火墙** | 放行 VLESS 端口（默认 443，TCP）与 H2 端口（默认 8443，**TCP + UDP**）的入站 | **云厂商控制台加规则**（最易漏：不放行 = 客户端连不上）；系统防火墙由 deploy.sh 自动放行 |
+| **云安全组/防火墙** | 放行 VLESS 端口（默认 443，TCP）与 H2 端口（默认 8443，UDP + TCP(冗余)）的入站 | **云厂商控制台加规则**（最易漏：不放行 = 客户端连不上）；系统防火墙由 deploy.sh 自动放行 |
 | IPv6 出口（可选） | 需要**国外 v6 目标**可达时：实例分配 v6 地址 + 安全组放行 v6 的 443/8443 | 云厂商控制台；v6栏填`::/0`，对应v4的`0.0.0.0/0`。仅 v4 时国外 v6 目标不可达（客户端自动回退 v4） |
 | 域名解析（可选） | `address` 用域名时，DNS A 记录指向服务器 IP | 域名服务商控制台 |
 
@@ -149,7 +149,7 @@ make deploy
 # 服务器上容器状态与日志(部署输出末尾已展示)
 ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml ps"
 ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --tail=20"
-# 应看到三行 inbound 监听日志:vless-in / ss-in / hy2-in 的 inbound started
+# 应看到与清单通道对应的 inbound started:vless-in / hy2-in(每通道一行)
 ```
 
 客户端导入与实测见 [clients/](clients/) 下对应客户端文档(sing-box / Hiddify / Clash Verge Rev / mihomo)。
@@ -227,6 +227,16 @@ www.suffolk.edu
 3. `make gen` 后,把证书与私钥命名为 `cert.pem` / `key.pem` 放进 `dist/servers/<name>/`
 4. `make deploy`(deploy.sh 检测到受信模式,不再自动生成自签,缺证书会报错引导)
 
+ **deploy 时的证书预检警告**(deploy.sh 检测到已放置的证书异常时提示,仅警告不阻断部署):
+
+| 警告 | 含义与处置 |
+|---|---|
+| `警告:证书 CN=xxx 与 hysteria2.server_name 不一致` | 目录里是先前自签模式生成的旧证书(无 SAN、CN=服务器 IP),服务端会继续用旧证书,客户端按受信模式校验时握手失败。删除 `cert.pem`/`key.pem` 后放置正确受信证书再重跑;或改回自签模式(清空 `server_name`)后重跑 |
+| `警告:cert.pem 与 key.pem 不匹配(不是同一对证书)` | 证书与私钥不是同一对,或私钥带密码(sing-box 无法使用加密私钥)。换成同一对、无密码的 `cert.pem`/`key.pem` 后重跑 |
+| `警告:cert.pem 已过期或将在 30 天内过期` | 证书临近/已经过期,客户端校验证书会失败。更换新证书后重跑(Let's Encrypt 证书需在到期前 renew) |
+
+> 警告不阻断部署(容器照常启动),但证书内容问题要到客户端握手才显现——看到警告应先处置再分发客户端产物。
+
 ## 升级 sing-box 版本
 
 产物锁版镜像(compose 内 `ghcr.io/sagernet/sing-box:v1.14.0`):
@@ -249,7 +259,7 @@ www.suffolk.edu
 
 1. 服务器上容器状态与日志:
    `docker compose -f /opt/sing-box/docker-compose.yml ps` 是否 Running;
-   `logs --tail=20` 是否三行 inbound started(vless-in / ss-in / hy2-in)
+   `logs --tail=20` 是否看到与清单通道对应的 inbound started(vless-in / hy2-in,每通道一行)
 2. 云安全组与系统防火墙是否放行(与实际配置端口一致:443/TCP、8443/UDP)
 3. 客户端节点信息与 `dist/links.txt` 是否一致(换过服务器 IP 后需重新导入)
 4. 单通道问题见下表对应行

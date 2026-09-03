@@ -82,6 +82,9 @@ func RenderConfig(s *conf.Server) ([]byte, error) {
 		}
 		vals["H2_PASSWORD"] = jq(h.Password)
 		vals["H2_PORT"] = fmt.Sprint(h.ListenPort())
+		// 证书路径与 compose/check 挂载同源(见 artifact.go 常量组)
+		vals["H2_CERT_PATH"] = jq(certContainerPath)
+		vals["H2_KEY_PATH"] = jq(keyContainerPath)
 		obfs := ""
 		if h.ObfsPassword != "" {
 			vals["H2_OBFS_PASSWORD"] = jq(h.ObfsPassword)
@@ -184,6 +187,8 @@ const vlessFragment = `    {
 
 // h2FragmentPrefix 与 h2FragmentSuffix 是 Hysteria2 inbound 的前后半段
 // (中间按需插入 h2ObfsFragment,保持 obfs 字段在 tls 之后的可读布局)。
+// 证书路径经 {{.H2_CERT_PATH}}/{{.H2_KEY_PATH}} 注入:值与 compose/check
+// 挂载目标同源(见 artifact.go 常量组),模板不写死防三处漂移。
 const h2FragmentPrefix = `    {
       "type": "hysteria2",
       "tag": "hy2-in",
@@ -197,8 +202,8 @@ const h2FragmentPrefix = `    {
       ],
       "tls": {
         "enabled": true,
-        "certificate_path": "/etc/sing/cert.pem",
-        "key_path": "/etc/sing/key.pem"
+        "certificate_path": {{.H2_CERT_PATH}},
+        "key_path": {{.H2_KEY_PATH}}
       }
 `
 

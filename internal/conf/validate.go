@@ -118,8 +118,16 @@ func validateVLESS(v *VLESSConfig) error {
 
 // validateH2 校验 Hysteria2 通道(凭据非空时格式合理即可,obfs 密码任意串)。
 func validateH2(h *H2Config) error {
-	if h.ServerName != "" && (strings.ContainsAny(h.ServerName, " \t") || strings.Contains(h.ServerName, "://")) {
-		return fmt.Errorf("server_name(证书域名)%q 非法:不能含空白或 URL scheme", h.ServerName)
+	// server_name 非空 = 受信证书模式,该域名进入客户端 SNI 供证书校验,
+	// 误填的 host:port/括号/空白形态会静默拖到客户端握手才失败——与
+	// address 同口径前置拦截(ValidAddress);空 = 自签模式,合法。
+	// 放行边界说明(排查确认):单标签域名(内网/私有 CA 场景)与裸
+	// IP/IPv6(IP SAN 证书场景)有意放行,与 VLESS server_name 的
+	// 「容忍端口形态」策略不同——受信 SNI 无端口语义,一律拒绝。
+	if h.ServerName != "" {
+		if err := ValidAddress(h.ServerName); err != nil {
+			return fmt.Errorf("server_name(证书域名)%q 非法: %w", h.ServerName, err)
+		}
 	}
 	return nil
 }

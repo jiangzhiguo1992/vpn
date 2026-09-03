@@ -276,6 +276,24 @@ func TestWriteArtifacts_证书模式(t *testing.T) {
 	if !strings.Contains(string(sh), `-v "$PWD/cert.pem:/etc/sing/cert.pem:ro"`) {
 		t.Fatal("deploy.sh 校验命令缺证书挂载(受信证书模式)")
 	}
+	// 受信模式须带内容预检:自签模式切换后残留的旧自签证书同名存在,
+	// 存在性检查拦不住;三道检查——cert/key 公钥匹配、30 天过期预检、
+	// 无 SAN 扩展(cert.sh 自签形态)时比对 CN 与 server_name(带 SAN 的
+	// 受信证书含通配符,不比对防误报)
+	for _, want := range []string{
+		"openssl x509 -noout -pubkey",
+		"openssl pkey -pubout",
+		"cert.pem 与 key.pem 不匹配",
+		"-checkend 2592000",
+		"-ext subjectAltName",
+		"openssl x509 -noout -subject",
+		"CN=$CN 与 hysteria2.server_name 不一致",
+		"vpn.example.com", // 比对目标(server_name 注入)
+	} {
+		if !strings.Contains(string(sh), want) {
+			t.Fatalf("deploy.sh 受信分支缺内容预检 %q", want)
+		}
+	}
 	// 无 h2:先自签生成再改无 h2,残留 cert.sh 应被清理
 	s2 := fixtureServer(t)
 	s2.Hysteria2 = nil

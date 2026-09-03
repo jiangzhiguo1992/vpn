@@ -43,6 +43,19 @@ import (
 // 一致,配置挂载语义见 composeYAML)。
 const remoteConfigPath = "/etc/sing-box/config.json"
 
+// ===== H2 证书文件与容器路径(配置/编排/校验四处同步面) =====
+// cert.pem/key.pem 文件名出现于:cert.sh 生成(openssl)、deploy.sh 存在性
+// 检查、compose 挂载源;容器路径 /etc/sing/ 出现于:config.json 的
+// certificate_path/key_path(render.go)、compose 与 check 校验命令的挂载
+// 目标。改文件名/路径任一处须全链路同步,统一引用防漏改。
+const (
+	certFileName = "cert.pem" // 产物目录证书文件名(自签生成/受信放置)
+	keyFileName  = "key.pem"  // 产物目录私钥文件名(同上)
+
+	certContainerPath = "/etc/sing/" + certFileName // 容器内证书路径
+	keyContainerPath  = "/etc/sing/" + keyFileName  // 容器内私钥路径
+)
+
 // WriteArtifacts 生成单台服务器的全部服务端产物到 dir。
 //
 // 调用说明:dir 不存在时自动创建;conf.Server 须已通过 Validate +
@@ -99,9 +112,9 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 func composeYAML(s *conf.Server) string {
 	var volumes string
 	if s.Hysteria2 != nil {
-		volumes = `
-      - ./cert.pem:/etc/sing/cert.pem:ro
-      - ./key.pem:/etc/sing/key.pem:ro`
+		volumes = fmt.Sprintf(`
+      - ./%[1]s:%[2]s:ro
+      - ./%[3]s:%[4]s:ro`, certFileName, certContainerPath, keyFileName, keyContainerPath)
 	}
 	return fmt.Sprintf(`services:
   sing-box:
@@ -131,9 +144,9 @@ func deployScript(s *conf.Server) (string, error) {
 	// 证书就位先于校验,挂载不会因缺文件失败)
 	checkMounts := ""
 	if s.Hysteria2 != nil {
-		checkMounts = ` \
-  -v "$PWD/cert.pem:/etc/sing/cert.pem:ro" \
-  -v "$PWD/key.pem:/etc/sing/key.pem:ro"`
+		checkMounts = fmt.Sprintf(` \
+  -v "$PWD/%[1]s:%[2]s:ro" \
+  -v "$PWD/%[3]s:%[4]s:ro"`, certFileName, certContainerPath, keyFileName, keyContainerPath)
 	}
 	tcpList := strings.Join(tcpPorts, " ")
 	udpList := strings.Join(udpPorts, " ")
@@ -251,21 +264,53 @@ func certBlockScript(s *conf.Server) (string, error) {
 		// 自签模式:证书对缺失时用 cert.sh 自动生成
 		// (证书存在性成对检查:单边缺失如 key.pem 被误删时重新生成,
 		// 防 compose 挂载缺文件导致容器启动失败)
-		return `if { [ ! -f cert.pem ] || [ ! -f key.pem ]; }; then
+		return fmt.Sprintf(`if { [ ! -f %[1]s ] || [ ! -f %[2]s ]; }; then
   echo "==> 生成自签证书 ..."
   sh cert.sh
 fi
-`, nil
+`, certFileName, keyFileName), nil
 	}
 	// 受信证书模式:不自动生成,缺证书时报错引导(用户把证书命名为
-	// cert.pem/key.pem 放本目录后重跑)
-	return `if { [ ! -f cert.pem ] || [ ! -f key.pem ]; }; then
-  echo "==> 缺少证书文件 cert.pem/key.pem" >&2
+	// cert.pem/key.pem 放本目录后重跑);证书已存在时追加内容预检
+	// (openssl 缺失时全部跳过;仅警告不阻断——证书为用户放置,报错
+	// 会破坏幂等重跑),三道检查:
+	//   1. cert/key 匹配:错配的证书对在容器启动/客户端握手才暴露,
+	//      部署期比对公钥提前预警(私钥带密码保护时读取失败自动跳过)
+	//   2. 过期预检:受信证书过期后客户端校验失败,30 天窗口预警
+	//   3. 自签残留检测:存在性检查拦不住「自签模式切换后残留的旧自签
+	//      证书」(同名文件在,但 CN=服务器 IP 而非 server_name),静默
+	//      生效会拖到客户端握手才失败。判据用 SAN 而非 CN 直比:本项目
+	//      cert.sh 生成的自签证书无 SAN(openssl req -x509 不带扩展),
+	//      Let's Encrypt/certbot 等受信证书必有 SAN(含通配符证书
+	//      CN=*.domain,CN 直比会误报);无 SAN 时再取 CN 与 server_name
+	//      比对,不一致给出警告。CN 提取失败(非 CN 首项的多 RDN 证书)
+	//      时跳过,不误报
+	return fmt.Sprintf(`if { [ ! -f %[1]s ] || [ ! -f %[2]s ]; }; then
+  echo "==> 缺少证书文件 %[1]s/%[2]s" >&2
   echo "==> 本服务器配置了 hysteria2.server_name(受信证书模式):" >&2
-  echo "==> 请把证书与私钥命名为 cert.pem/key.pem 放入本目录后重跑 deploy.sh" >&2
+  echo "==> 请把证书与私钥命名为 %[1]s/%[2]s 放入本目录后重跑 deploy.sh" >&2
   exit 1
 fi
-`, nil
+if command -v openssl >/dev/null 2>&1; then
+  CERT_PUB=$(openssl x509 -noout -pubkey -in %[1]s 2>/dev/null) || CERT_PUB=
+  KEY_PUB=$(openssl pkey -pubout -in %[2]s 2>/dev/null) || KEY_PUB=
+  if [ -n "$CERT_PUB" ] && [ "$KEY_PUB" != "$CERT_PUB" ]; then
+    echo "==> 警告:cert.pem 与 key.pem 不匹配(不是同一对证书)" >&2
+    echo "==> 请重新放置匹配的证书对后重跑 deploy.sh" >&2
+  fi
+  if ! openssl x509 -checkend 2592000 -noout -in %[1]s >/dev/null 2>&1; then
+    echo "==> 警告:cert.pem 已过期或将在 30 天内过期" >&2
+    echo "==> 过期后客户端校验证书将失败,请提前更换" >&2
+  fi
+  if ! openssl x509 -noout -ext subjectAltName -in %[1]s 2>/dev/null | grep -qi 'Alternative Name'; then
+    CN=$(openssl x509 -noout -subject -in %[1]s 2>/dev/null | sed -n 's/.*CN[[:space:]]*=[[:space:]]*\([^,/]*\).*/\1/p') || true
+    if [ -n "$CN" ] && [ "$CN" != %[3]s ]; then
+      echo "==> 警告:证书 CN=$CN 与 hysteria2.server_name 不一致" >&2
+      echo "==> 若为先前自签模式生成的旧证书,请换成 server_name 对应的受信证书后重跑" >&2
+    fi
+  fi
+fi
+`, certFileName, keyFileName, shellQuote(h.ServerName)), nil
 }
 
 // certScript 生成 H2 自签证书脚本(openssl EC 证书,10 年有效期)。
@@ -284,12 +329,12 @@ set -e
 # 挂载进容器;有效期 10 年,到期重跑本脚本即可,客户端 insecure 跳过
 # 证书校验,换证书零影响)
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-  -keyout key.pem -out cert.pem \
-  -days 3650 -nodes -subj /CN=%s
+  -keyout %[2]s -out %[1]s \
+  -days 3650 -nodes -subj /CN=%[3]s
 # 私钥收紧 0600(openssl 按 umask 默认 0644,防同机其他用户读取;
 # compose 以 root 挂载 :ro 读取,无碍)
-chmod 600 key.pem
-`, shellQuote(cn))
+chmod 600 %[2]s
+`, certFileName, keyFileName, shellQuote(cn))
 }
 
 // shellQuote 对 CN 做 POSIX shell 单引号转义(防注入;CN 已由清单校验

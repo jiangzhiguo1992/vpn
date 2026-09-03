@@ -156,7 +156,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 # 应看到三行 inbound 监听日志:vless-in / ss-in / hy2-in 的 inbound started
 ```
 
-客户端实测见 [docs/clients.md](docs/clients.md)。推荐的验证顺序:
+客户端实测见 [clients.md](clients.md)。推荐的验证顺序:
 先桌面 Clash Verge Rev 导入 `clash.yaml` 验证 443 通道,再手机扫 `links.txt` 的链接。
 
 ---
@@ -196,13 +196,58 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 - 服务器可随时销毁重建:重新 `make deploy` 同一份产物即恢复,客户端零感知。
 - 换电脑:把项目目录(含 servers.json)拷走即可;或重新 git clone 后把 servers.json 拷入。
 
-## 排障速查
+## 常见问题与排障
+
+### 连接不上:排查顺序
+
+1. 服务器上容器状态与日志:
+   `docker compose -f /opt/sing-box/docker-compose.yml ps` 是否 Running;
+   `logs --tail=20` 是否三行 inbound started(vless-in / ss-in / hy2-in)
+2. 云安全组与系统防火墙是否放行(与实际配置端口一致:443/TCP、8388/TCP+UDP、8443/UDP)
+3. 客户端节点信息与 `dist/links.txt` 是否一致(换过服务器 IP 后需重新导入)
+4. 单通道问题见下表对应行
+
+### 故障速查
 
 | 现象 | 排查 |
 |---|---|
-| 客户端全部连不上 | 云安全组端口是否放行(第 3 步);服务器 `docker compose ps` 是否 Running;`docker compose logs` 是否 inbound started |
-| deploy 卡在拉镜像 | ghcr.io 被墙时脚本自动回退 docker.io;仍失败则服务器手动 `docker pull docker.io/sagernet/sing-box:v1.14.0` |
-| deploy 报"配置语法校验失败" | config.json 模板与 sing-box 版本不匹配(升级版本后常见),查看校验输出具体字段 |
-| VLESS 连不上,SS/H2 正常 | 伪装站点被墙(换 `server_name`,如 `www.microsoft.com` / `www.amazon.com` 实测);443 端口被占用 |
-| H2 连不上 | UDP 8443 是否放行(QUIC 只走 UDP,云安全组只放 TCP 必失败) |
+| 客户端全部连不上 | 按上面 4 步顺序;最常见是云安全组没放行 |
+| deploy 卡在拉镜像 | ghcr.io 被墙时脚本自动回退 docker.io;仍失败则服务器手动 `docker pull docker.io/sagernet/sing-box:v1.14.0` 后重跑(镜像已存在则跳过拉取) |
+| deploy 报"配置语法校验失败" | config.json 模板与 sing-box 版本不匹配(升级版本后常见),查看校验输出具体字段;重新 `make gen` 还原产物后 deploy |
+| VLESS 连不上,SS/H2 正常 | 伪装站点被墙(换 `server_name`,如 `www.microsoft.com` / `www.amazon.com` 实测);443 端口被占用。Reality 握手实时向伪装站点要证书,伪装站点本身必须能被服务器访问 |
+| H2 连不上,其他正常 | UDP 8443 是否放行(QUIC 只走 UDP,只放 TCP 必失败);客户端所在网络封锁 UDP 时 Hy2 本就用不了,它是逃生通道不是主通道 |
+| 某台服务器部署失败 | 逐台执行失败即停(报错含服务器名);修复后重跑,已成功的服务器跳过拉取直接重部署,互不影响 |
 | 换服务器 IP | 改清单 address 后 `make gen && make deploy`,客户端重新导入(节点地址变了,凭据未变) |
+
+### 证书问答
+
+**Q:自签证书安全吗?会不会被中间人?**
+H2 自签场景客户端配置了 insecure(跳过证书校验),理论上存在被中间人截获的风险面;
+主力通道 VLESS+Reality 不依赖证书文件(基于公钥体系,握手实时校验),无此问题。
+要消除 H2 的风险面:用受信证书(见上文"受信证书"章节)。
+
+**Q:自签证书会过期吗?到期怎么办?**
+cert.sh 生成 10 年有效期;到期后服务器上重跑 `sh cert.sh` 即可,客户端零改动
+(insecure 跳过校验,换证书无感知)。用 Let's Encrypt(90 天)则自行配置 certbot renew。
+
+**Q:证书 SNI 是什么?清单里 hysteria2.server_name 为什么不填?**
+SNI 是 TLS 握手时客户端声明的"要访问的域名"。自签场景服务器只认证书文件、不校验 SNI,
+客户端跳过校验,所以不用填。仅当使用受信证书时填证书域名(客户端会校验 SNI=证书域名,必须一致)。
+
+### 清单与凭据问答
+
+**Q:servers.json 与 example-servers.json 什么关系?**
+example 是模板(提交到 git);servers.json 是你的实际清单,gen 会回填凭据,
+**不要提交到 git**(已 gitignore)。备份凭据 = 备份 servers.json。
+
+**Q:重跑 make gen 会换密钥吗?**
+不会。凭据回填幂等(非空不重新生成),重跑产物不变。
+误删 servers.json 后凭据才会翻新,此时所有已分发客户端需要重新导入(旧节点失效)。
+
+**Q:字段填错会怎样?**
+校验在生成前拦截(含拼错字段名的严格模式,如 `private_key` 拼成 `privatekey`),报错指明字段,
+不会产出半成品配置。
+
+**Q:服务器被墙/IP 被封怎么办?**
+云控制台换新 IP 或销毁重建 → 改清单 address → `make gen && make deploy` →
+客户端重新导入(仅地址变化,凭据不变)。封端口不封 IP:改对应通道端口并同步改云安全组。

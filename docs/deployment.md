@@ -52,7 +52,7 @@ make check     # build + vet + test + fmt 全量验证(改动后必跑)
 ssh-keygen -t ed25519
 
 # 2. 云控制台粘贴公钥，或以下命令拷贝公钥到服务器(输入一次密码后即免密)
-ssh-copy-id root@服务器IP
+ssh-copy-id 用户名@服务器IP
 ```
 
 查看公钥（复制给服务器/云控制台用）：
@@ -69,7 +69,7 @@ ssh-copy-id root@服务器IP
   type %USERPROFILE%\.ssh\id_ed25519.pub
   ```
 
-验证（本地）:`ssh root@服务器IP "uname -a"` 能直接输出(不再问密码)即可。
+验证（本地）:`ssh 用户名@服务器IP "uname -a"` 能直接输出(不再问密码)即可。
 
 ## 第 3 步:填写服务器清单(每台服务器一段)
 
@@ -147,8 +147,8 @@ make deploy
 
 ```bash
 # 服务器上容器状态与日志(部署输出末尾已展示)
-ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml ps"
-ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --tail=20"
+ssh 用户名@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml ps"
+ssh 用户名@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --tail=20"
 # 应看到与清单通道对应的 inbound started:vless-in / hy2-in(每通道一行)
 ```
 

@@ -186,6 +186,10 @@ func TestRenderSingBox_结构(t *testing.T) {
 	if got := walk(m, "route", "final"); got != "proxy" {
 		t.Fatalf("route.final = %v", got)
 	}
+	// 出站域名解析器(sing-box 1.12+ 要求,1.14 起缺失拒启)
+	if got := walk(m, "route", "default_domain_resolver"); got != "dns-direct" {
+		t.Fatalf("route.default_domain_resolver = %v", got)
+	}
 	// 内网直连规则在
 	if got := walk(m, "route", "rules", "2", "ip_is_private"); got != true {
 		t.Fatal("缺 ip_is_private 直连规则")

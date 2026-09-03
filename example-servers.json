@@ -12,9 +12,6 @@
         "port": 443,
         "server_name": "www.apple.com"
       },
-      "shadowsocks": {
-        "port": 8388
-      },
       "hysteria2": {
         "port": 8443
       }

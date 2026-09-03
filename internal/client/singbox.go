@@ -88,20 +88,6 @@ func singBoxOutbound(n *conf.Node) (string, error) {
         }
       }
     }`
-	case conf.TypeShadowsocks:
-		if n.Password == "" || n.Method == "" {
-			return "", fmt.Errorf("shadowsocks 节点字段缺失(凭据未回填?)")
-		}
-		vals["METHOD"] = jq(n.Method)
-		vals["PASSWORD"] = jq(n.Password)
-		tpl = `    {
-      "type": "shadowsocks",
-      "tag": {{.TAG}},
-      "server": {{.SERVER}},
-      "server_port": {{.PORT}},
-      "method": {{.METHOD}},
-      "password": {{.PASSWORD}}
-    }`
 	case conf.TypeHysteria2:
 		if n.Password == "" {
 			return "", fmt.Errorf("hysteria2 节点字段缺失(凭据未回填?)")

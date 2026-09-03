@@ -8,22 +8,21 @@
 
 | 分发物(dist/) | 内容 | 适用客户端 | 导入方式 |
 |---|---|---|---|
-| `links.txt` | 每行一个分享链接(vless:// ss:// hysteria2://) | 一切支持链接导入的客户端:sing-box 官方、Hiddify、移动端 app 等 | 剪贴板粘贴 / 扫码 / 手动添加 |
+| `links.txt` | 每行一个分享链接(vless:// hysteria2://) | 一切支持链接导入的客户端:sing-box 官方、Hiddify、移动端 app 等 | 剪贴板粘贴 / 扫码 / 手动添加 |
 | `clash.yaml` | Clash 订阅(节点 + PROXY/AUTO 组 + 国内直连分流) | Clash Verge Rev、mihomo、OpenClash、Clash Meta for Android 等 | 导入订阅文件 / URL |
 | `sing-box.json` | sing-box 官方完整配置(mixed 入站 + auto/proxy 组 + 基础路由) | sing-box 官方客户端(SFI/SFA/CLI) | 配置文件导入 / 剪贴板 |
 | `sub.txt` | base64 全链接订阅(机场标准格式) | 支持订阅的客户端(可作自托管订阅源内容) | 粘贴订阅内容或挂到任意静态 URL |
 
 ## 2 节点命名与协议
 
-节点名 = `<服务器名>-<协议短名>`(如 `hk-01-vless`),同一服务器三个通道即三个节点:
+节点名 = `<服务器名>-<协议短名>`(如 `hk-01-vless`),同一服务器两个通道即两个节点:
 
 | 节点名 | 协议 | 端口 | 传输 | 定位 |
 |---|---|---|---|---|
 | `<名>-vless` | VLESS+Reality | 443 TCP | tcp + vision flow | 主力,抗封锁 |
-| `<名>-ss` | Shadowsocks | 8388 TCP+UDP | - | 保底,兼容最广 |
 | `<名>-h2` | Hysteria2 | 8443 UDP | QUIC | 逃生/提速 |
 
-平时用 vless 节点即可;某通道故障时切换其他节点是天然容灾。
+平时用 vless 节点即可;vless 被封锁时切 h2 节点是天然容灾。
 
 ## 3 分流规则说明
 
@@ -40,7 +39,7 @@
 
 **Q:移动端(iOS/Android)推荐哪个?**
 Hiddify(全平台、自带分流、链接导入最顺);iOS 无 Hiddify 条件时用区外商店的
-Shadowrocket 等第三方 app,不支持 Reality/Hy2 时保底选 ss 节点链接。
+sing-box(SFI)或 Shadowrocket 等第三方 app,第三方 app 不支持 Reality 时选 h2 节点。
 
 **Q:多服务器时怎么自动选最优节点?**
 clash.yaml 的 AUTO 组与 sing-box.json 的 auto 组都是延迟自动选优(urltest),

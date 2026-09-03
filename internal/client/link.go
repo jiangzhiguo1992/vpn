@@ -1,7 +1,7 @@
 // Package client 客户端产物生成:分享链接 + 各客户端配置。
 //
 // 用途:由全部节点(conf.Node,清单回填后反推)渲染客户端分发物:
-//   - links.txt     每行一个分享链接(vless:// ss:// hysteria2://),
+//   - links.txt     每行一个分享链接(vless:// hysteria2://),
 //     剪贴板/扫码/手动添加,覆盖一切支持链接导入的客户端
 //   - sub.txt       通用订阅(base64 编码的全部链接,机场标准格式),
 //     支持订阅的客户端直接使用;也可作为自托管订阅源的内容
@@ -32,7 +32,6 @@ package client
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -50,8 +49,6 @@ func ShareLink(n conf.Node) string {
 	switch n.Type {
 	case conf.TypeVLESSReality:
 		return vlessShareLink(n)
-	case conf.TypeShadowsocks:
-		return ssShareLink(n)
 	case conf.TypeHysteria2:
 		return hysteria2ShareLink(n)
 	default:
@@ -83,17 +80,6 @@ func vlessShareLink(n conf.Node) string {
 	}
 	return fmt.Sprintf("vless://%s@%s?%s#%s", n.UUID, shareHost(n),
 		query.Encode(), url.PathEscape(shareFragment(n)))
-}
-
-// ssShareLink 组装 ss:// 链接(SIP002 形态)。
-//
-// 形态:ss://<base64(method:password)>@<host>:<port>#<name>;userinfo 用
-// 标准 base64 带 padding(SIP002 规范写法,主流客户端 sing-box/mihomo/
-// hiddify/移动端 app 均兼容)。
-func ssShareLink(n conf.Node) string {
-	userinfo := base64StdEncode([]byte(n.Method + ":" + n.Password))
-	return fmt.Sprintf("ss://%s@%s#%s", userinfo, shareHost(n),
-		url.PathEscape(shareFragment(n)))
 }
 
 // hysteria2ShareLink 组装 hysteria2:// 链接。
@@ -140,11 +126,6 @@ func shareHost(n conf.Node) string {
 }
 
 // ===== 通用渲染辅助 =====
-
-// base64StdEncode 是标准 base64 编码(带 padding,ss:// userinfo 用)。
-func base64StdEncode(b []byte) string {
-	return base64.StdEncoding.EncodeToString(b)
-}
 
 // renderFragment 渲染 JSON 片段(值已 jq 转义,占位符不带引号)。
 //

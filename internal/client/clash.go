@@ -92,14 +92,6 @@ func clashProxy(n *conf.Node) (string, error) {
       public-key: %s
       short-id: %s
 `, jq(n.UUID), jq(n.ServerName), jq(n.PublicKey), jq(n.ShortID)), nil
-	case conf.TypeShadowsocks:
-		if n.Password == "" || n.Method == "" {
-			return "", fmt.Errorf("shadowsocks 节点字段缺失(凭据未回填?)")
-		}
-		return head + fmt.Sprintf(`    cipher: %s
-    password: %s
-    udp: true
-`, jq(n.Method), jq(n.Password)), nil
 	case conf.TypeHysteria2:
 		if n.Password == "" {
 			return "", fmt.Errorf("hysteria2 节点字段缺失(凭据未回填?)")
@@ -125,8 +117,6 @@ func clashType(t conf.NodeType) string {
 	switch t {
 	case conf.TypeVLESSReality:
 		return "vless"
-	case conf.TypeShadowsocks:
-		return "ss"
 	case conf.TypeHysteria2:
 		return "hysteria2"
 	}

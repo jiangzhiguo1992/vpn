@@ -23,8 +23,7 @@ func sampleServer() *Server {
 		VLESS: &VLESSConfig{
 			ServerName: "www.apple.com",
 		},
-		Shadowsocks: &SSConfig{},
-		Hysteria2:   &H2Config{},
+		Hysteria2: &H2Config{},
 	}
 }
 
@@ -64,7 +63,7 @@ func TestInventory_Validate_场景(t *testing.T) {
 		{"name 为点", func(inv *Inventory) { inv.Servers[0].Name = ".." }, "不能是"},
 		{"无通道", func(inv *Inventory) {
 			s := sampleServer()
-			s.VLESS, s.Shadowsocks, s.Hysteria2 = nil, nil, nil
+			s.VLESS, s.Hysteria2 = nil, nil
 			inv.Servers[0] = s
 		}, "至少配置一个通道"},
 		{"address 为 host:port", func(inv *Inventory) { inv.Servers[0].Address = "1.2.3.4:443" }, "IPv6"},
@@ -74,7 +73,6 @@ func TestInventory_Validate_场景(t *testing.T) {
 		{"ssh 端口越界", func(inv *Inventory) { inv.Servers[0].SSH.Port = 70000 }, "超出范围"},
 		{"vless 缺 server_name", func(inv *Inventory) { inv.Servers[0].VLESS.ServerName = "" }, "server_name"},
 		{"vless server_name 带 URL", func(inv *Inventory) { inv.Servers[0].VLESS.ServerName = "https://a.com" }, "scheme"},
-		{"ss method 白名单外", func(inv *Inventory) { inv.Servers[0].Shadowsocks.Method = "rc4-md5" }, "支持列表"},
 		{"uuid 形态非法", func(inv *Inventory) { inv.Servers[0].VLESS.UUID = "not-a-uuid" }, "uuid"},
 		{"short_id 奇数位", func(inv *Inventory) { inv.Servers[0].VLESS.ShortID = "abc" }, "short_id"},
 		{"short_id 非 hex", func(inv *Inventory) { inv.Servers[0].VLESS.ShortID = "zz" }, "不是合法 hex"},
@@ -114,9 +112,6 @@ func TestInventory_Backfill_幂等(t *testing.T) {
 	if v1.UUID != v2.UUID || v1.PrivateKey != v2.PrivateKey || v1.ShortID != v2.ShortID {
 		t.Fatal("二次回填翻新了 vless 凭据(幂等被破坏)")
 	}
-	if inv.Servers[0].Shadowsocks.Password != snapshot.Servers[0].Shadowsocks.Password {
-		t.Fatal("二次回填翻新了 ss 密码")
-	}
 	if inv.Servers[0].Hysteria2.Password != snapshot.Servers[0].Hysteria2.Password {
 		t.Fatal("二次回填翻新了 h2 密码")
 	}
@@ -140,7 +135,6 @@ func cloneForTest(t *testing.T, inv *Inventory) *Inventory {
 func TestInventory_Backfill_已填不覆盖(t *testing.T) {
 	s := sampleServer()
 	s.VLESS.UUID = "11111111-1111-4111-8111-111111111111"
-	s.Shadowsocks.Method = "chacha20-ietf-poly1305"
 	s.Hysteria2.Port = 20000
 	inv := &Inventory{Servers: []*Server{s}}
 	if err := inv.Backfill(); err != nil {
@@ -149,9 +143,6 @@ func TestInventory_Backfill_已填不覆盖(t *testing.T) {
 	v := inv.Servers[0]
 	if v.VLESS.UUID != "11111111-1111-4111-8111-111111111111" {
 		t.Fatal("已填 uuid 被覆盖")
-	}
-	if v.Shadowsocks.Method != "chacha20-ietf-poly1305" {
-		t.Fatal("已填 method 被覆盖")
 	}
 	if v.Hysteria2.Port != 20000 {
 		t.Fatal("已填端口被覆盖")
@@ -165,13 +156,10 @@ func TestInventory_Backfill_默认值(t *testing.T) {
 		t.Fatalf("回填失败: %v", err)
 	}
 	s := inv.Servers[0]
-	if s.VLESS.Port != DefaultVLESSListenPort || s.Shadowsocks.Port != DefaultShadowsocksListenPort || s.Hysteria2.Port != DefaultHysteria2ListenPort {
-		t.Fatalf("默认端口回填错误: vless=%d ss=%d h2=%d", s.VLESS.Port, s.Shadowsocks.Port, s.Hysteria2.Port)
+	if s.VLESS.Port != DefaultVLESSListenPort || s.Hysteria2.Port != DefaultHysteria2ListenPort {
+		t.Fatalf("默认端口回填错误: vless=%d h2=%d", s.VLESS.Port, s.Hysteria2.Port)
 	}
-	if s.Shadowsocks.Method != DefaultShadowsocksMethod {
-		t.Fatalf("默认 method 回填错误: %q", s.Shadowsocks.Method)
-	}
-	if len(s.Hysteria2.Password) != 64 || len(s.Shadowsocks.Password) != 64 {
+	if len(s.Hysteria2.Password) != 64 {
 		t.Fatal("凭据长度异常(应为 32 字节 hex = 64 字符)")
 	}
 }
@@ -197,18 +185,18 @@ func TestPublicKeyFromPrivateKey_派生(t *testing.T) {
 
 // ===== Nodes =====
 
-// TestServer_Nodes_三通道 验证节点推导顺序/命名/凭据与私钥公钥一致。
-func TestServer_Nodes_三通道(t *testing.T) {
+// TestServer_Nodes_双通道 验证节点推导顺序/命名/凭据与私钥公钥一致。
+func TestServer_Nodes_双通道(t *testing.T) {
 	s := sampleServer()
 	if err := (&Inventory{Servers: []*Server{s}}).Backfill(); err != nil {
 		t.Fatalf("回填失败: %v", err)
 	}
 	nodes := s.Nodes()
-	if len(nodes) != 3 {
-		t.Fatalf("期望 3 节点,实际 %d", len(nodes))
+	if len(nodes) != 2 {
+		t.Fatalf("期望 2 节点,实际 %d", len(nodes))
 	}
-	wantNames := []string{"hk-01-vless", "hk-01-ss", "hk-01-h2"}
-	wantTypes := []NodeType{TypeVLESSReality, TypeShadowsocks, TypeHysteria2}
+	wantNames := []string{"hk-01-vless", "hk-01-h2"}
+	wantTypes := []NodeType{TypeVLESSReality, TypeHysteria2}
 	for i, want := range wantNames {
 		if nodes[i].Name != want || nodes[i].Type != wantTypes[i] {
 			t.Fatalf("节点 %d 推导错误: name=%q type=%q", i, nodes[i].Name, nodes[i].Type)
@@ -220,10 +208,7 @@ func TestServer_Nodes_三通道(t *testing.T) {
 	if nodes[0].PublicKey != PublicKeyFromPrivateKey(s.VLESS.PrivateKey) {
 		t.Fatal("vless 节点公钥推导错误")
 	}
-	if nodes[1].Password != s.Shadowsocks.Password {
-		t.Fatal("ss 节点密码与服务端不一致(漂移)")
-	}
-	if nodes[2].Password != s.Hysteria2.Password || !nodes[2].Insecure {
+	if nodes[1].Password != s.Hysteria2.Password || !nodes[1].Insecure {
 		t.Fatal("h2 节点密码/自签语义错误")
 	}
 }
@@ -245,14 +230,14 @@ func TestServer_Nodes_H2受信证书(t *testing.T) {
 // TestServer_Nodes_端口 验证自定义端口透传与默认端口兜底。
 func TestServer_Nodes_端口(t *testing.T) {
 	s := sampleServer()
-	s.VLESS.Port = 8443 // 自定义(与 h2 默认冲突,改 h2 端口)
+	s.VLESS.Port = 7443 // 自定义
 	s.Hysteria2.Port = 9443
 	if err := (&Inventory{Servers: []*Server{s}}).Backfill(); err != nil {
 		t.Fatalf("回填失败: %v", err)
 	}
 	nodes := s.Nodes()
-	if nodes[0].Port != 8443 || nodes[1].Port != 8388 || nodes[2].Port != 9443 {
-		t.Fatalf("端口推导错误: %d/%d/%d", nodes[0].Port, nodes[1].Port, nodes[2].Port)
+	if nodes[0].Port != 7443 || nodes[1].Port != 9443 {
+		t.Fatalf("端口推导错误: %d/%d", nodes[0].Port, nodes[1].Port)
 	}
 }
 
@@ -281,7 +266,6 @@ func TestSaveLoad_往返(t *testing.T) {
 		t.Fatalf("加载失败: %v", err)
 	}
 	if got.Servers[0].VLESS.UUID != inv.Servers[0].VLESS.UUID ||
-		got.Servers[0].Shadowsocks.Password != inv.Servers[0].Shadowsocks.Password ||
 		got.Servers[0].Hysteria2.Password != inv.Servers[0].Hysteria2.Password {
 		t.Fatal("round-trip 凭据不一致")
 	}

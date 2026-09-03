@@ -5,7 +5,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -24,7 +23,6 @@ func writeSmokeInventory(t *testing.T, path string) {
       "address": "hk.example.com",
       "ssh": {"user": "root", "port": 22},
       "vless": {"port": 443, "server_name": "www.apple.com"},
-      "shadowsocks": {"port": 8388},
       "hysteria2": {"port": 8443}
     },
     {
@@ -60,9 +58,6 @@ func TestRunGen_端到端(t *testing.T) {
 			VLESS *struct {
 				UUID string `json:"uuid"`
 			} `json:"vless"`
-			Shadowsocks *struct {
-				Password string `json:"password"`
-			} `json:"shadowsocks"`
 			Hysteria2 *struct {
 				Password string `json:"password"`
 			} `json:"hysteria2"`
@@ -71,7 +66,7 @@ func TestRunGen_端到端(t *testing.T) {
 	if err := json.Unmarshal(rawInv, &inv); err != nil {
 		t.Fatalf("解析清单: %v", err)
 	}
-	if inv.Servers[0].VLESS == nil || inv.Servers[0].VLESS.UUID == "" || inv.Servers[0].Shadowsocks.Password == "" {
+	if inv.Servers[0].VLESS == nil || inv.Servers[0].VLESS.UUID == "" || inv.Servers[0].Hysteria2.Password == "" {
 		t.Fatal("清单未被回填凭据")
 	}
 	if inv.Servers[1].VLESS == nil || inv.Servers[1].VLESS.UUID == "" {
@@ -97,29 +92,20 @@ func TestRunGen_端到端(t *testing.T) {
 	cfg, _ := os.ReadFile(filepath.Join(outDir, "servers/hk-01/config.json"))
 	links, _ := os.ReadFile(filepath.Join(outDir, "links.txt"))
 	uuid := inv.Servers[0].VLESS.UUID
-	ssPass := inv.Servers[0].Shadowsocks.Password
+	h2Pass := inv.Servers[0].Hysteria2.Password
 	if !strings.Contains(string(cfg), uuid) {
 		t.Fatal("服务端 config.json 缺清单 uuid(漂移)")
 	}
 	if !strings.Contains(string(links), uuid) {
 		t.Fatal("links.txt 缺清单 uuid(漂移)")
 	}
-	if !strings.Contains(string(cfg), ssPass) {
-		t.Fatal("服务端 config.json 缺 ss 密码(漂移)")
+	if !strings.Contains(string(cfg), h2Pass) || !strings.Contains(string(links), h2Pass) {
+		t.Fatal("h2 密码在服务端/links 间漂移")
 	}
-	// links 中 ss 凭据是 base64(method:password) 形态;h2 密码明文在
-	b64SS := base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:" + ssPass))
-	if !strings.Contains(string(links), b64SS) {
-		t.Fatal("links.txt 的 ss base64 凭据与清单不一致(漂移)")
-	}
-	h2Pass := inv.Servers[0].Hysteria2.Password
-	if !strings.Contains(string(links), h2Pass) {
-		t.Fatal("links.txt 缺 h2 密码(漂移)")
-	}
-	// 4. links.txt 每台服务器每通道一个节点:2 服务器 = vless+ss+h2 + vless = 4 行
+	// 4. links.txt 每台服务器每通道一个节点:2 服务器 = vless+h2 + vless = 3 行
 	lines := strings.Split(strings.TrimSpace(string(links)), "\n")
-	if len(lines) != 4 {
-		t.Fatalf("links 行数 = %d, want 4(2 服务器 3+1 通道)", len(lines))
+	if len(lines) != 3 {
+		t.Fatalf("links 行数 = %d, want 3(2 服务器 2+1 通道)", len(lines))
 	}
 	// 5. 幂等:二次 gen 后产物与清单一致
 	cfgBefore, _ := os.ReadFile(filepath.Join(outDir, "servers/hk-01/config.json"))
@@ -151,13 +137,13 @@ func TestRunGen_客户端配置可解析(t *testing.T) {
 		t.Fatalf("sing-box.json 不是合法 JSON: %v", err)
 	}
 	outbounds, _ := m["outbounds"].([]any)
-	// direct + 4 节点 + auto + proxy = 7
-	if len(outbounds) != 7 {
-		t.Fatalf("outbounds 数量 = %d, want 7", len(outbounds))
+	// direct + 3 节点 + auto + proxy = 6
+	if len(outbounds) != 6 {
+		t.Fatalf("outbounds 数量 = %d, want 6", len(outbounds))
 	}
 	clash, _ := os.ReadFile(filepath.Join(outDir, "clash.yaml"))
 	out := string(clash)
-	for _, want := range []string{"jp-01-vless", "hk-01-vless", "hk-01-ss", "hk-01-h2", "MATCH,PROXY"} {
+	for _, want := range []string{"jp-01-vless", "hk-01-vless", "hk-01-h2", "MATCH,PROXY"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("clash.yaml 缺 %q", want)
 		}

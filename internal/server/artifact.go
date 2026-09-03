@@ -3,7 +3,7 @@
 //
 // 设计决策:
 //   - docker-compose 用 network_mode: host(无端口映射,容器直出;
-//     443/8388/8443 端口由 sing-box 进程直接占用),镜像与版本常量
+//     443/8443 端口由 sing-box 进程直接占用),镜像与版本常量
 //     ImageRef 同源(见 render.go)
 //   - 证书两态(与 conf.H2Config.ServerName 语义一致):空 = IP+自签,
 //     生成 cert.sh 且 deploy.sh 自动执行;非空 = 受信证书,deploy.sh
@@ -135,8 +135,8 @@ if command -v sudo >/dev/null 2>&1; then
   SUDO="sudo -n"
 fi
 
-# 0. 系统防火墙放行端口(云安全组需在控制台放行;hy2 纯 QUIC 仅 UDP,
-#    ss 与 vless 走 TCP,ss 另开 UDP 中继)
+# 0. 系统防火墙放行端口(云安全组需在控制台放行;vless 走 TCP,
+#    hy2 纯 QUIC 仅 UDP)
 if command -v ufw >/dev/null 2>&1; then
   for p in %s; do $SUDO ufw allow $p/tcp >/dev/null 2>&1 || true; done
   for p in %s; do $SUDO ufw allow $p/udp >/dev/null 2>&1 || true; done
@@ -202,15 +202,10 @@ $SUDO docker compose logs --tail=10
 	return script, nil
 }
 
-// firewallPorts 汇总通道端口:TCP 组(vless/ss)与 UDP 组(ss/hy2)。
+// firewallPorts 汇总通道端口:TCP 组(vless)与 UDP 组(hy2)。
 func firewallPorts(s *conf.Server) (tcp, udp []string) {
 	if s.VLESS != nil {
 		tcp = append(tcp, fmt.Sprint(s.VLESS.ListenPort()))
-	}
-	if s.Shadowsocks != nil {
-		p := fmt.Sprint(s.Shadowsocks.ListenPort())
-		tcp = append(tcp, p)
-		udp = append(udp, p) // ss UDP 中继与 TCP 同端口
 	}
 	if s.Hysteria2 != nil {
 		udp = append(udp, fmt.Sprint(s.Hysteria2.ListenPort()))

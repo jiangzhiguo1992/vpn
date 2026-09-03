@@ -8,7 +8,6 @@
 | 通道 | 端口 | 协议 | 用途 |
 |---|---|---|---|
 | VLESS+Reality | 443(TCP) | 伪装 TLS 流量,抗封锁主力 | Clash 系 / sing-box 系 / Hiddify 全支持 |
-| Shadowsocks | 8388(TCP+UDP) | 经典 SS,最广兼容 | 任何客户端保底可用 |
 | Hysteria2 | 8443(UDP/QUIC) | 自签证书,逃生/提速 | 网络受限时的备选通道 |
 
 ---
@@ -79,7 +78,6 @@ cp example-servers.json servers.json
       "address": "1.2.3.4",
       "ssh": { "user": "root", "port": 22 },
       "vless": { "port": 443, "server_name": "www.apple.com" },
-      "shadowsocks": { "port": 8388 },
       "hysteria2": { "port": 8443 }
     }
   ]
@@ -97,13 +95,11 @@ cp example-servers.json servers.json
 | `ssh.port` | 否 | 身份 | SSH 端口,默认 `22`(仅 deploy 用) |
 | `vless.port` | 否 | 身份 | VLESS 监听端口,默认 `443` |
 | `vless.server_name` | 是(有 vless 时) | 身份 | 伪装站点(Reality 握手目标),推荐 `www.apple.com`(实测可用) |
-| `shadowsocks.port` | 否 | 身份 | SS 监听端口,默认 `8388`(TCP+UDP 同端口) |
-| `shadowsocks.method` | 否 | 身份 | 加密方式,默认 `aes-256-gcm`;可选 `aes-128-gcm` / `chacha20-ietf-poly1305` / `xchacha20-ietf-poly1305` |
 | `hysteria2.port` | 否 | 身份 | H2 监听端口,默认 `8443`(仅 UDP) |
 | `hysteria2.server_name` | 否 | 身份 | 证书域名,默认不填(=IP+自签证书,客户端跳过校验);仅当你用受信证书(如 Let's Encrypt)时才填证书域名 |
 | `hysteria2.obfs_password` | 否 | 身份 | salamander 混淆密码,不填=不启用混淆 |
 
-**凭据字段**(`vless.private_key/uuid/short_id`、`shadowsocks.password`、`hysteria2.password`):无需填写,
+**凭据字段**(`vless.private_key/uuid/short_id`、`hysteria2.password`):无需填写,
 `make gen` 首次自动生成并写回清单,再次 gen 复用(幂等)。清单含凭据,请妥善保管(自动 0600 权限)。
 
 **规则**:`name`/`address` 非空且不重复;至少配置一个通道;同服务器各通道端口不得冲突;
@@ -116,7 +112,6 @@ cp example-servers.json servers.json
 | 端口 | 协议 | 说明 |
 |---|---|---|
 | 443 | TCP | VLESS+Reality |
-| 8388 | TCP + UDP | Shadowsocks(含 UDP 中继) |
 | 8443 | UDP | Hysteria2(纯 QUIC,仅 UDP;TCP 放行冗余无妨) |
 
 > 最易漏的一步:安全组不放行 = 客户端永远连不上。改端口时记得同步改安全组。
@@ -164,7 +159,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 ## 多服务器
 
 清单数组里加一段即可,`make gen && make deploy` 一次处理全部;
-客户端产物自动聚合全部服务器的全部通道(每服务器 3 个节点:name-vless / name-ss / name-h2)。
+客户端产物自动聚合全部服务器的全部通道(每服务器 2 个节点:name-vless / name-h2)。
 
 ## 端口冲突与自定义
 
@@ -187,7 +182,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 1. 修改 `internal/server/render.go` 的 `ImageVersion` 常量(与镜像 tag 同步)
 2. `make gen && make deploy`(镜像已存在则自动拉取新 tag 重建)
 
-服务端配置模板与 sing-box schema 强相关,升级大版本后建议实测三通道连通性。
+服务端配置模板与 sing-box schema 强相关,升级大版本后建议实测双通道连通性。
 升级不涉及任何凭据(凭据在本地清单),已分发客户端不受影响。
 
 ## 备份与迁移
@@ -203,7 +198,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 1. 服务器上容器状态与日志:
    `docker compose -f /opt/sing-box/docker-compose.yml ps` 是否 Running;
    `logs --tail=20` 是否三行 inbound started(vless-in / ss-in / hy2-in)
-2. 云安全组与系统防火墙是否放行(与实际配置端口一致:443/TCP、8388/TCP+UDP、8443/UDP)
+2. 云安全组与系统防火墙是否放行(与实际配置端口一致:443/TCP、8443/UDP)
 3. 客户端节点信息与 `dist/links.txt` 是否一致(换过服务器 IP 后需重新导入)
 4. 单通道问题见下表对应行
 
@@ -214,7 +209,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 | 客户端全部连不上 | 按上面 4 步顺序;最常见是云安全组没放行 |
 | deploy 卡在拉镜像 | ghcr.io 被墙时脚本自动回退 docker.io;仍失败则服务器手动 `docker pull docker.io/sagernet/sing-box:v1.14.0` 后重跑(镜像已存在则跳过拉取) |
 | deploy 报"配置语法校验失败" | config.json 模板与 sing-box 版本不匹配(升级版本后常见),查看校验输出具体字段;重新 `make gen` 还原产物后 deploy |
-| VLESS 连不上,SS/H2 正常 | 伪装站点被墙(换 `server_name`,如 `www.microsoft.com` / `www.amazon.com` 实测);443 端口被占用。Reality 握手实时向伪装站点要证书,伪装站点本身必须能被服务器访问 |
+| VLESS 连不上,H2 正常 | 伪装站点被墙(换 `server_name`,如 `www.microsoft.com` / `www.amazon.com` 实测);443 端口被占用。Reality 握手实时向伪装站点要证书,伪装站点本身必须能被服务器访问 |
 | H2 连不上,其他正常 | UDP 8443 是否放行(QUIC 只走 UDP,只放 TCP 必失败);客户端所在网络封锁 UDP 时 Hy2 本就用不了,它是逃生通道不是主通道 |
 | 某台服务器部署失败 | 逐台执行失败即停(报错含服务器名);修复后重跑,已成功的服务器跳过拉取直接重部署,互不影响 |
 | 换服务器 IP | 改清单 address 后 `make gen && make deploy`,客户端重新导入(节点地址变了,凭据未变) |

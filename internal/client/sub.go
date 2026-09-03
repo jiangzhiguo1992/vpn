@@ -1,8 +1,8 @@
 // Package client 分享链接聚合与通用订阅(links.txt / sub.txt)。
 //
 // 设计决策:
-//   - links.txt 每行一个分享链接(节点顺序与清单一致,先 vless 后 ss
-//     再 h2);sub.txt 是 links 的标准 base64(机场通用订阅格式,支持
+//   - links.txt 每行一个分享链接(节点顺序与清单一致,先 vless 后 h2);
+//     sub.txt 是 links 的标准 base64(机场通用订阅格式,支持
 //     订阅的客户端可用;也可作为自托管订阅源文件)
 //   - 产物不含任何格式包装,纯文本,分发时由用户自行拷贝/传输
 //

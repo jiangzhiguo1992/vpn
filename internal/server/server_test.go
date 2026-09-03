@@ -20,11 +20,10 @@ import (
 func fixtureServer(t *testing.T) *conf.Server {
 	t.Helper()
 	s := &conf.Server{
-		Name:        "hk-01",
-		Address:     "hk.example.com",
-		VLESS:       &conf.VLESSConfig{ServerName: "www.apple.com"},
-		Shadowsocks: &conf.SSConfig{},
-		Hysteria2:   &conf.H2Config{},
+		Name:      "hk-01",
+		Address:   "hk.example.com",
+		VLESS:     &conf.VLESSConfig{ServerName: "www.apple.com"},
+		Hysteria2: &conf.H2Config{},
 	}
 	if err := (&conf.Inventory{Servers: []*conf.Server{s}}).Backfill(); err != nil {
 		t.Fatalf("回填失败: %v", err)
@@ -76,8 +75,8 @@ func inbound(m map[string]any, i int) map[string]any {
 
 // ===== RenderConfig =====
 
-// TestRenderConfig_三通道 验证三 inbound 顺序/字段与清单凭据一致。
-func TestRenderConfig_三通道(t *testing.T) {
+// TestRenderConfig_双通道 验证 inbound 顺序/字段与清单凭据一致。
+func TestRenderConfig_双通道(t *testing.T) {
 	s := fixtureServer(t)
 	data, err := RenderConfig(s)
 	if err != nil {
@@ -93,8 +92,8 @@ func TestRenderConfig_三通道(t *testing.T) {
 	if got := walk(m, "route", "final"); got != "direct" {
 		t.Fatalf("route.final = %v", got)
 	}
-	// 三 inbound:类型顺序 vless/shadowsocks/hysteria2
-	wantTypes := []string{"vless", "shadowsocks", "hysteria2"}
+	// inbound:类型顺序 vless/hysteria2
+	wantTypes := []string{"vless", "hysteria2"}
 	for i, wt := range wantTypes {
 		if got := walk(m, "inbounds", fmt.Sprint(i), "type"); got != wt {
 			t.Fatalf("inbound[%d] 类型 = %v, want %s", i, got, wt)
@@ -119,25 +118,14 @@ func TestRenderConfig_三通道(t *testing.T) {
 	if got := fmt.Sprint(walk(m, "inbounds", "0", "listen_port")); got != "443" {
 		t.Fatalf("vless listen_port = %v", got)
 	}
-	// ss:method/password;network 字段必须省略(sing-box 留空默认
-	// tcp+udp 双栈,显式 "tcp,udp" 会被 schema 校验拒绝)
-	if got := walk(m, "inbounds", "1", "password"); got != s.Shadowsocks.Password {
-		t.Fatal("ss password 漂移")
-	}
-	if walk(m, "inbounds", "1", "network") != nil {
-		t.Fatal("ss 不应渲染 network 字段(留空=默认 tcp+udp)")
-	}
-	if got := walk(m, "inbounds", "1", "method"); got != "aes-256-gcm" {
-		t.Fatalf("ss method = %v", got)
-	}
 	// h2:密码与证书路径
-	if got := walk(m, "inbounds", "2", "users", "0", "password"); got != s.Hysteria2.Password {
+	if got := walk(m, "inbounds", "1", "users", "0", "password"); got != s.Hysteria2.Password {
 		t.Fatal("h2 password 漂移")
 	}
-	if got := walk(m, "inbounds", "2", "tls", "certificate_path"); got != "/etc/sing/cert.pem" {
+	if got := walk(m, "inbounds", "1", "tls", "certificate_path"); got != "/etc/sing/cert.pem" {
 		t.Fatalf("h2 证书路径 = %v", got)
 	}
-	if walk(m, "inbounds", "2", "obfs") != nil {
+	if walk(m, "inbounds", "1", "obfs") != nil {
 		t.Fatal("未配混淆不应渲染 obfs 段")
 	}
 }
@@ -155,14 +143,13 @@ func TestRenderConfig_通道组合(t *testing.T) {
 		wantTags []string
 		wantObfs bool
 	}{
-		{"仅 vless", mk(func(s *conf.Server) { s.Shadowsocks, s.Hysteria2 = nil, nil }), []string{"vless-in"}, false},
-		{"vless+ss", mk(func(s *conf.Server) { s.Hysteria2 = nil }), []string{"vless-in", "ss-in"}, false},
+		{"仅 vless", mk(func(s *conf.Server) { s.Hysteria2 = nil }), []string{"vless-in"}, false},
 		{"仅 h2 带混淆", mk(func(s *conf.Server) {
-			s.VLESS, s.Shadowsocks = nil, nil
+			s.VLESS = nil
 			s.Hysteria2.ObfsPassword = "obfs-secret"
 		}), []string{"hy2-in"}, true},
 		{"h2 受信证书模式", mk(func(s *conf.Server) {
-			s.VLESS, s.Shadowsocks = nil, nil
+			s.VLESS = nil
 			s.Hysteria2.ServerName = "vpn.example.com"
 		}), []string{"hy2-in"}, false},
 	}
@@ -203,7 +190,6 @@ func TestRenderConfig_异常(t *testing.T) {
 	}{
 		{"无通道", &conf.Server{Name: "x", Address: "1.2.3.4"}, "无协议通道"},
 		{"vless 未回填", &conf.Server{Name: "x", Address: "1.2.3.4", VLESS: &conf.VLESSConfig{ServerName: "a.com"}}, "未回填"},
-		{"ss 未回填", &conf.Server{Name: "x", Address: "1.2.3.4", Shadowsocks: &conf.SSConfig{}}, "未回填"},
 		{"h2 未回填", &conf.Server{Name: "x", Address: "1.2.3.4", Hysteria2: &conf.H2Config{}}, "未回填"},
 	}
 	for _, tc := range cases {
@@ -249,8 +235,8 @@ func TestWriteArtifacts_文件与权限(t *testing.T) {
 	// deploy.sh 端口与镜像回退
 	sh, _ := os.ReadFile(filepath.Join(dir, "deploy.sh"))
 	for _, want := range []string{
-		"for p in 443 8388",  // vless+ss TCP
-		"for p in 8388 8443", // ss+hy2 UDP
+		"for p in 443",  // vless TCP
+		"for p in 8443", // hy2 UDP
 		ImageVersion,
 		"docker.io/sagernet/sing-box",
 		"check -c /etc/sing-box/config.json",
@@ -267,7 +253,7 @@ func TestWriteArtifacts_文件与权限(t *testing.T) {
 func TestWriteArtifacts_证书模式(t *testing.T) {
 	// 受信证书模式(server_name 非空)
 	s := fixtureServer(t)
-	s.VLESS, s.Shadowsocks = nil, nil
+	s.VLESS = nil
 	s.Hysteria2.ServerName = "vpn.example.com"
 	dir := t.TempDir()
 	if err := WriteArtifacts(dir, s); err != nil {
@@ -359,7 +345,7 @@ func TestDeployScript_证书分支(t *testing.T) {
 	if strings.Contains(sh2, "cert.sh") {
 		t.Fatal("无 h2 时 deploy.sh 不应引用证书脚本")
 	}
-	if strings.Contains(sh2, "for p in 8388 8443") {
-		t.Fatal("无 h2 时 UDP 放行不应含 8443")
+	if strings.Contains(sh2, "for p in 8443") {
+		t.Fatal("无 h2 时不应放行 8443")
 	}
 }

@@ -74,7 +74,7 @@ func SaveFile(path string, inv *Inventory) error {
 // 调用说明:Validate 通过后调用;全部回填完成才返回 nil,中途失败时
 // 已回填部分保留在 inv 中(重跑复用,不产生新随机数)。
 // 回填范围:端口 0 到默认端口;vless 的 Reality 私钥/UUID/short_id;
-// shadowsocks 的 method/密码;hysteria2 的密码。
+// hysteria2 的密码。
 // 返回:任一随机生成失败时返回含服务器名的包装错误。
 func (inv *Inventory) Backfill() error {
 	for _, s := range inv.Servers {
@@ -115,22 +115,6 @@ func (s *Server) backfill() error {
 				return fmt.Errorf("生成 short_id: %w", err)
 			}
 			v.ShortID = sid
-		}
-	}
-	if s.Shadowsocks != nil {
-		ss := s.Shadowsocks
-		if ss.Port == 0 {
-			ss.Port = DefaultShadowsocksListenPort
-		}
-		if ss.Method == "" {
-			ss.Method = DefaultShadowsocksMethod
-		}
-		if ss.Password == "" {
-			pw, err := NewHex(32)
-			if err != nil {
-				return fmt.Errorf("生成 shadowsocks 密码: %w", err)
-			}
-			ss.Password = pw
 		}
 	}
 	if s.Hysteria2 != nil {

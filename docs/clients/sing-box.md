@@ -1,12 +1,12 @@
 # sing-box 官方客户端对接
 
-sing-box 官方客户端与服务器同内核,协议支持最全(三通道全部可用)。
+sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hysteria2 全部可用)。
 覆盖:macOS/iOS(SFI)、Android(SFA)、Linux/Windows(CLI)。
 
 ## 产物
 
 - `dist/sing-box.json`:完整配置(全节点 + mixed 本地入站 7890 + auto 自动选择组 + proxy 手动组)
-- `dist/links.txt`:单节点分享链接(vless:// ss:// hysteria2://)
+- `dist/links.txt`:单节点分享链接(vless:// hysteria2://)
 
 ## 导入方式
 

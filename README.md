@@ -54,7 +54,7 @@ flowchart LR
         F["cmd/vpn deploy"] --> G["internal/deploy<br/>ssh/scp 编排"]
     end
     subgraph 运行时[运行时:海外服务器,每台]
-        H["docker compose 起 sing-box 镜像<br/>host 网络,三协议监听"]
+        H["docker compose 起 sing-box 镜像<br/>host 网络,双协议监听"]
     end
     subgraph 客户端[客户端:全平台]
         I["Clash 系 / sing-box 官方 / Hiddify<br/>及任意支持链接导入的 app"]
@@ -75,18 +75,42 @@ flowchart LR
 | `internal/client` | 客户端产物渲染:分享链接、base64 订阅、clash.yaml、sing-box.json |
 | `internal/deploy` | ssh/scp 逐台上传与远程执行 |
 
-### 2.3 设计决策(为什么这样做)
+### 2.3 工程决策(怎么实现)
 
 | 决策 | 理由 |
 |---|---|
-| 服务端用 sing-box 官方镜像 | 单容器支持全部三协议;与主流客户端同源(官方客户端/Hiddify 基于 sing-box,Clash 系完整支持);相对 xray 面板(3x-ui 等)无数据库/无 Web 面,攻击面小、无状态、迁移简单;镜像锁 tag 升级可控 |
-| 三协议通道(Reality + SS + Hy2) | 兼容矩阵推导:VLESS+Reality 是 2024 年后 Clash 系/Hiddify/sing-box/iOS 新版 app 的主通道(抗封锁、无证书);SS 最老牌,一切客户端保底;Hy2 走 QUIC,加速与逃生。三通道即可覆盖全部目标客户端,VMess/Trojan+WS 等需域名证书,个人自用收益低不做(清单模型留扩展位) |
 | 本地生成静态产物,不要面板/在线订阅 | 清单文件即"填写服务器信息"的载体,生成即分发;静态产物零运行时依赖,服务器可随时销毁重建;无订阅则无过期/鉴权/托管问题。未来要在线订阅,把 `sub.txt` 托管到任意静态 URL 即完成 |
 | 生成器零第三方依赖(纯标准库) | 配置均为固定结构文本,模板渲染足够;不引入 sing-box option 库(旧方案重依赖、构建标签、分钟级编译,本方案构建秒级)。正确性由"模板 + 渲染后 json.Valid 校验 + 一致性单测 + 服务器上 docker run check 最终把关"保证 |
-| 凭据只在本地生成回填(服务端无状态) | Reality 密钥/UUID/SS/Hy2 密码全部在 `make gen` 时生成写回清单(0600 原子写,严格模式解析防拼错);服务器只消费静态 config.json。服务器可任意重建,凭据不变则已分发客户端免更新;服务端/客户端产物从同一清单渲染,凭据不可能漂移(单测黄金断言守护) |
+| 凭据只在本地生成回填(服务端无状态) | Reality 密钥/UUID 与 Hy2 密码全部在 `make gen` 时生成写回清单(0600 原子写,严格模式解析防拼错);服务器只消费静态 config.json。服务器可任意重建,凭据不变则已分发客户端免更新;服务端/客户端产物从同一清单渲染,凭据不可能漂移(单测黄金断言守护) |
 | 分流规则按客户端形态取舍 | clash.yaml 内置国内直连(GEOSITE,cn / GEOIP,CN),Clash 系自带 geodata 开箱可用;sing-box.json 用全局代理 + 内网直连(不依赖外置规则文件,官方 app 导入即用),需要国内分流的按文档追加 |
 
-### 2.4 安全模型
+> 服务端内核(sing-box)与协议集(Reality/Hy2)的选型推理见 2.4 与 2.5。
+
+### 2.4 主流方案对比(为什么不自建面板/手搓配置/买机场)
+
+| 方案 | 服务端 | 多用户/订阅 | 部署与运维 | 客户端对接 | 适用场景 |
+|---|---|---|---|---|---|
+| **本方案**(清单驱动生成) | sing-box 单容器双协议,host 网络 | 无面板,单用户;节点变更重新分发 | `make gen && make deploy` 幂等闭环,服务器无状态可随时重建 | 生成四类分发物(links/clash/sing-box/订阅),主流客户端全兼容 | 个人/小团队自用,要可控与低运维,不要订阅托管 |
+| xray 面板(3x-ui/xboard 等) | xray 多协议 | Web 面板:多用户、订阅 URL、流量统计 | 服务器上装面板 + 数据库,配置在服务器,迁移/备份较繁 | 客户端吃订阅 URL,多设备同步方便 | 多人共享/类机场运营,需要用户与计量 |
+| 手写 sing-box 配置裸部署 | sing-box 单机 | 无工具,手动管理 | ssh + 编辑器维护配置,systemd/docker 手动编排 | 无生成物,客户端配置全部手搓 | 想完全掌控内核细节且接受手工维护 |
+| 商业机场订阅 | 现成服务 | 买即用,自带订阅与分流 | 零运维,流量/速率受商家限制 | 客户端导入订阅即用 | 不想管理服务器、要求省心 |
+
+**选型结论**:个人自用场景在"可控性 + 运维成本 + 订阅托管"三者间取舍,本方案取"可控 + 一条命令部署 + 免托管";需要多人共享与计量再上 xray 面板;完全不想管服务器则直接买机场。
+
+### 2.5 协议对比(为什么是 Reality + Hy2)
+
+| 协议 | 传输层 | 抗封锁能力 | 性能 | 证书 | 客户端支持面 | 本方案定位 |
+|---|---|---|---|---|---|---|
+| **VLESS+Reality** | TCP | 最强:TLS 指纹伪装真实站点,主动探测难识别 | 高 | 无需 | 全主流(2024+ 的 Clash 系、sing-box 系、Hiddify) | **主通道** |
+| **Hysteria2** | QUIC/UDP | 强:UDP 特征,弱网抗丢包 | 高(弱网优势) | 自签即可 | 广(Clash 内核 v1.18+、sing-box 系、Hiddify) | **逃生/提速通道** |
+| Shadowsocks | TCP+UDP | 弱:流量特征明显,易被针对性封锁 | 中 | 无需 | 最广(一切客户端) | 未采用:特征明显易被封锁,Reality/Hy2 已覆盖全目标客户端 |
+| Trojan | TCP | 中:伪装 HTTPS | 中 | 需域名证书 | 广 | 未采用:与 Reality 能力重叠,多出证书依赖 |
+| VMess+WS+TLS | TCP(WebSocket) | 中:依赖域名与 TLS | 中 | 需域名证书 | 广 | 未采用:同上 |
+| TUIC | QUIC/UDP | 中 | 高 | 自签 | 较窄 | 未采用:与 Hy2 定位重叠,客户端支持面更窄 |
+
+**选型结论**:Reality 抗封锁最强且零证书,作主通道;Hy2 走 QUIC,弱网与大流量场景互补。双通道覆盖全部目标客户端且无证书依赖;SS 特征明显易被封锁,收益与 Reality/Hy2 重叠,不做;Trojan/VMess 收益与 Reality 重叠还需域名证书,不做(各客户端对双通道的支持矩阵见 3.2)。
+
+### 2.6 安全模型
 
 - 本地:清单与全部含凭据产物 0600;凭据不进 git(`servers.json` 已忽略)
 - 传输:凭据即认证(Reality 公钥体系 / SS 密码 / Hy2 密码);Reality 流量伪装为 TLS 访问公开站点
@@ -94,7 +118,7 @@ flowchart LR
 - 部署链路:SSH 非交互(BatchMode)、首次指纹 accept-new、超时保护、错误即停;脚本内嵌值经校验与 shell 转义双重防注入
 - H2 证书:默认自签(insecure 跳过校验);要受信证书时清单声明 `server_name` 并自行放置(消除自签的中间人风险面)
 
-### 2.5 扩展方向(需要时再加)
+### 2.7 扩展方向(需要时再加)
 
 - 新增协议通道:conf 通道结构 + server 片段 + client 渲染分支同构扩展(如 VMess+WS+TLS,需域名证书)
 - 在线订阅更新:托管 `sub.txt` 到任意静态 URL,无需本仓库代码
@@ -112,17 +136,16 @@ flowchart LR
 | Android | Hiddify | links.txt(链接/扫码) | sing-box(SFA) / Clash Meta for Android |
 | iOS/iPadOS | Hiddify | links.txt(链接/扫码) | sing-box(SFI) / Shadowrocket 等 |
 | 网关盒子(OpenWrt) | OpenClash(mihomo 内核) | clash.yaml(上传/订阅) | 裸 mihomo / sing-box |
-| Android TV 等 | Hiddify 或对应 Android 客户端 | links.txt | ss 节点保底 |
+| Android TV 等 | Hiddify 或对应 Android 客户端 | links.txt | - |
 
-### 3.2 协议能力矩阵(客户端 × 三通道)
+### 3.2 协议能力矩阵(客户端 × 双通道)
 
 | 协议 | sing-box 官方 | Hiddify | Clash 系(mihomo 内核) | iOS 第三方 app | 说明 |
 |---|---|---|---|---|---|
 | VLESS+Reality(443 TCP) | 支持 | 支持 | 支持(内核 2024+) | 部分支持(新版 Shadowrocket 等) | 主力通道,抗封锁 |
-| Shadowsocks(8388 TCP+UDP) | 支持 | 支持 | 支持 | 支持(最老牌格式) | 保底通道 |
 | Hysteria2(8443 UDP) | 支持 | 支持 | 支持(内核 v1.18+) | 部分支持 | QUIC 逃生通道 |
 
-iOS 第三方 app 不支持 Reality/Hy2 时选 ss 节点;iOS 无 Hiddify 条件时用区外商店的 Shadowrocket 等。
+iOS 无 Hiddify 条件时用区外商店的 sing-box(SFI)或 Shadowrocket 等第三方 app;第三方 app 不支持 Reality 时优先选 h2 节点。
 
 ### 3.3 客户端功能差异
 
@@ -142,7 +165,7 @@ iOS 第三方 app 不支持 Reality/Hy2 时选 ss 节点;iOS 无 Hiddify 条件�
 |---|---|
 | 桌面三平台通用 | Clash Verge Rev 导入 clash.yaml,PROXY 组选 AUTO |
 | 手机快速上网 | Hiddify 扫 links.txt 的 vless 链接 |
-| iPhone 只有区外商店第三方 app | 用 ss 节点链接(兼容最广) |
+| iPhone 只有区外商店第三方 app | 装 sing-box(SFI)导入 sing-box.json,或第三方 app 用 h2 节点链接 |
 | 软路由让全屋设备代理 | OpenClash 导入 clash.yaml 或订阅 |
 | 命令行/服务器环境 | sing-box CLI 跑 sing-box.json,或 mihomo 跑 clash.yaml |
 

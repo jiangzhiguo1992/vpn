@@ -19,7 +19,6 @@ import (
 	"net"
 	"net/netip"
 	"regexp"
-	"slices"
 	"strings"
 )
 
@@ -68,7 +67,7 @@ func (s *Server) Validate() error {
 		return fmt.Errorf("address 非法: %w", err)
 	}
 	if !s.HasChannel() {
-		return fmt.Errorf("vless/shadowsocks/hysteria2 至少配置一个通道")
+		return fmt.Errorf("vless/hysteria2 至少配置一个通道")
 	}
 	if s.SSH != nil && (s.SSH.Port < 0 || s.SSH.Port > 65535) {
 		return fmt.Errorf("ssh.port %d 超出范围(1-65535)", s.SSH.Port)
@@ -78,17 +77,13 @@ func (s *Server) Validate() error {
 			return fmt.Errorf("vless: %w", err)
 		}
 	}
-	if s.Shadowsocks != nil {
-		if err := validateSS(s.Shadowsocks); err != nil {
-			return fmt.Errorf("shadowsocks: %w", err)
-		}
-	}
 	if s.Hysteria2 != nil {
 		if err := validateH2(s.Hysteria2); err != nil {
 			return fmt.Errorf("hysteria2: %w", err)
 		}
 	}
 	return s.validatePortConflict()
+
 }
 
 // validateVLESS 校验 VLESS 通道(伪装站点必填且格式合法,已有凭据必须合规)。
@@ -121,14 +116,6 @@ func validateVLESS(v *VLESSConfig) error {
 	return nil
 }
 
-// validateSS 校验 Shadowsocks 通道(加密方式必须在白名单内)。
-func validateSS(s *SSConfig) error {
-	if s.Method != "" && !slices.Contains(SSAllowedMethods, s.Method) {
-		return fmt.Errorf("method %q 不在支持列表内(可选 %s,空=默认 aes-256-gcm)", s.Method, strings.Join(SSAllowedMethods, "/"))
-	}
-	return nil
-}
-
 // validateH2 校验 Hysteria2 通道(凭据非空时格式合理即可,obfs 密码任意串)。
 func validateH2(h *H2Config) error {
 	if h.ServerName != "" && (strings.ContainsAny(h.ServerName, " \t") || strings.Contains(h.ServerName, "://")) {
@@ -149,14 +136,11 @@ func (s *Server) validatePortConflict() error {
 	if s.VLESS != nil {
 		add("vless", s.VLESS.ListenPort())
 	}
-	if s.Shadowsocks != nil {
-		add("shadowsocks", s.Shadowsocks.ListenPort())
-	}
 	if s.Hysteria2 != nil {
 		add("hysteria2", s.Hysteria2.ListenPort())
 	}
 	if len(ports) != s.channelCount() {
-		return fmt.Errorf("通道监听端口冲突:各通道须使用不同端口(默认 vless 443 / shadowsocks 8388 / hysteria2 8443)")
+		return fmt.Errorf("通道监听端口冲突:各通道须使用不同端口(默认 vless 443 / hysteria2 8443)")
 	}
 	return nil
 }
@@ -165,9 +149,6 @@ func (s *Server) validatePortConflict() error {
 func (s *Server) channelCount() int {
 	n := 0
 	if s.VLESS != nil {
-		n++
-	}
-	if s.Shadowsocks != nil {
 		n++
 	}
 	if s.Hysteria2 != nil {

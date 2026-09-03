@@ -10,12 +10,10 @@
 //     零第三方依赖、构建秒级、产物可读;字符串值统一经 json.Marshal
 //     转义为 JSON 字面量再贴模板(防密码/SNI 含引号注入),模板插槽
 //     不带引号
-//   - 每通道一个独立模板片段(保序),按 vless/ss/h2 顺序 join;渲染后
+//   - 每通道一个独立模板片段(保序),按 vless/h2 顺序 join;渲染后
 //     整体 json.Valid 双保险(text/template 对 map 缺 key 静默输出
 //     <no value>,语法校验兜底防残缺配置)
-//   - Shadowsocks inbound 不写 network 字段:sing-box 留空默认同时监听
-//     tcp/udp(UDP 中继,游戏/通话场景需要),显式 "tcp,udp" 反而被校验
-//     拒绝;Hysteria2 是纯 QUIC 仅 UDP,防火墙放行口径见 deploy.sh
+//   - Hysteria2 是纯 QUIC 仅 UDP,防火墙放行口径见 deploy.sh
 //   - 服务端流量直出:outbounds 恒 direct + route.final=direct(无代理
 //     出站);Hysteria2 服务端 TLS 用证书路径模式(单证书,无需 server_name)
 //
@@ -57,7 +55,7 @@ func RenderConfig(s *conf.Server) ([]byte, error) {
 		return nil, fmt.Errorf("server.RenderConfig: 服务器 %q 无协议通道", s.Name)
 	}
 	vals := map[string]string{}
-	frags := make([]string, 0, 3)
+	frags := make([]string, 0, 2)
 	if s.VLESS != nil {
 		v := s.VLESS
 		if v.UUID == "" || v.PrivateKey == "" || v.ShortID == "" {
@@ -74,20 +72,6 @@ func RenderConfig(s *conf.Server) ([]byte, error) {
 		frag, err := render(vlessFragment, vals)
 		if err != nil {
 			return nil, fmt.Errorf("server.RenderConfig: vless 片段: %w", err)
-		}
-		frags = append(frags, frag)
-	}
-	if s.Shadowsocks != nil {
-		ss := s.Shadowsocks
-		if ss.Password == "" {
-			return nil, fmt.Errorf("server.RenderConfig: 服务器 %q shadowsocks 密码未回填", s.Name)
-		}
-		vals["SS_METHOD"] = jq(ss.MethodName())
-		vals["SS_PASSWORD"] = jq(ss.Password)
-		vals["SS_PORT"] = fmt.Sprint(ss.ListenPort())
-		frag, err := render(ssFragment, vals)
-		if err != nil {
-			return nil, fmt.Errorf("server.RenderConfig: shadowsocks 片段: %w", err)
 		}
 		frags = append(frags, frag)
 	}
@@ -196,18 +180,6 @@ const vlessFragment = `    {
           "short_id": [{{.VLESS_SHORT_ID}}]
         }
       }
-    }`
-
-// ssFragment 是 Shadowsocks inbound(TCP+UDP 双栈:sing-box 的 network
-// 字段留空时默认同时监听 tcp/udp,故不写 network;显式 "tcp,udp" 会被
-// 校验拒绝,见 sing-box option.NetworkList)。
-const ssFragment = `    {
-      "type": "shadowsocks",
-      "tag": "ss-in",
-      "listen": "::",
-      "listen_port": {{.SS_PORT}},
-      "method": {{.SS_METHOD}},
-      "password": {{.SS_PASSWORD}}
     }`
 
 // h2FragmentPrefix 与 h2FragmentSuffix 是 Hysteria2 inbound 的前后半段

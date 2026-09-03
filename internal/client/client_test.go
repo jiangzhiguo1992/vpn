@@ -21,9 +21,6 @@ func fixtureNodes() []conf.Node {
 			Address: "hk.example.com", Port: 443, UUID: "8a2f3dfa-ddf3-471a-ab3a-d4110d631d92",
 			ServerName: "www.apple.com", PublicKey: "zRAPkZIJ-p7lWdzOi4i4O8JUas5vvd3TzMmYUQm1i2w",
 			ShortID: "cafe2554decd2a45"},
-		{Name: "hk-01-ss", Type: conf.TypeShadowsocks,
-			Address: "hk.example.com", Port: 8388, Method: "aes-256-gcm",
-			Password: "7bdf6fbeb3d813be0990afb304c0683111d2f218d65498f622756ac927371b58"},
 		{Name: "hk-01-h2", Type: conf.TypeHysteria2,
 			Address: "hk.example.com", Port: 8443, Password: "eabcc87e53095032770fdec57012235c8ee1f1ea916b0c5593a516628cf3dac3",
 			Insecure: true},
@@ -61,30 +58,9 @@ func TestShareLink_vless(t *testing.T) {
 	}
 }
 
-// TestShareLink_ss 解析 ss:// 链接并解码 userinfo(method:password)。
-func TestShareLink_ss(t *testing.T) {
-	n := fixtureNodes()[1]
-	link := ShareLink(n)
-	u, err := url.Parse(link)
-	if err != nil {
-		t.Fatalf("解析失败: %v (%s)", err, link)
-	}
-	if u.Scheme != "ss" || u.Host != "hk.example.com:8388" {
-		t.Fatalf("scheme/host 错误: %s", link)
-	}
-	raw, err := base64.StdEncoding.DecodeString(u.User.Username())
-	if err != nil {
-		t.Fatalf("userinfo 非标准 base64: %v", err)
-	}
-	want := n.Method + ":" + n.Password
-	if string(raw) != want {
-		t.Fatalf("userinfo 解码 = %q, want %q", raw, want)
-	}
-}
-
 // TestShareLink_h2 解析 hysteria2:// 链接断言 insecure/obfs 参数。
 func TestShareLink_h2(t *testing.T) {
-	n := fixtureNodes()[2]
+	n := fixtureNodes()[1]
 	link := ShareLink(n)
 	u, err := url.Parse(link)
 	if err != nil {
@@ -137,7 +113,7 @@ func TestRenderLinksSub_一致性(t *testing.T) {
 		t.Fatalf("RenderLinks: %v", err)
 	}
 	want := strings.Split(strings.TrimRight(links, "\n"), "\n")
-	if len(want) != 3 {
+	if len(want) != 2 {
 		t.Fatalf("链接行数 = %d", len(want))
 	}
 	sub, err := RenderSub(nodes)
@@ -179,9 +155,9 @@ func TestRenderSingBox_结构(t *testing.T) {
 		t.Fatalf("渲染失败: %v", err)
 	}
 	m := parseJSONMap(t, data)
-	// outbound tags:direct + 3 节点 + auto + proxy
+	// outbound tags:direct + 2 节点 + auto + proxy
 	tags := outboundTags(m)
-	want := []string{"direct", "hk-01-vless", "hk-01-ss", "hk-01-h2", "auto", "proxy"}
+	want := []string{"direct", "hk-01-vless", "hk-01-h2", "auto", "proxy"}
 	if len(tags) != len(want) {
 		t.Fatalf("outbound 数量 = %d, want %d\n%s", len(tags), len(want), data)
 	}
@@ -198,12 +174,12 @@ func TestRenderSingBox_结构(t *testing.T) {
 		t.Fatal("vless public_key 漂移")
 	}
 	// h2 自签:insecure true 无 server_name
-	if got := walk(m, "outbounds", "3", "tls", "insecure"); got != true {
+	if got := walk(m, "outbounds", "2", "tls", "insecure"); got != true {
 		t.Fatal("h2 自签应 insecure=true")
 	}
 	// urltest 组引用全部节点
-	auto := walk(m, "outbounds", "4", "outbounds").([]any)
-	if len(auto) != 3 {
+	auto := walk(m, "outbounds", "3", "outbounds").([]any)
+	if len(auto) != 2 {
 		t.Fatalf("urltest 引用数 = %d", len(auto))
 	}
 	// 路由 final proxy
@@ -219,17 +195,17 @@ func TestRenderSingBox_结构(t *testing.T) {
 // TestRenderSingBox_H2受信 受信证书节点渲染 server_name 且 insecure=false。
 func TestRenderSingBox_H2受信(t *testing.T) {
 	nodes := fixtureNodes()
-	nodes[2].Insecure = false
-	nodes[2].ServerName = "vpn.example.com"
+	nodes[1].Insecure = false
+	nodes[1].ServerName = "vpn.example.com"
 	data, err := RenderSingBox(nodes)
 	if err != nil {
 		t.Fatalf("渲染失败: %v", err)
 	}
 	m := parseJSONMap(t, data)
-	if got := walk(m, "outbounds", "3", "tls", "server_name"); got != "vpn.example.com" {
+	if got := walk(m, "outbounds", "2", "tls", "server_name"); got != "vpn.example.com" {
 		t.Fatalf("h2 server_name = %v", got)
 	}
-	if got := walk(m, "outbounds", "3", "tls", "insecure"); got != false {
+	if got := walk(m, "outbounds", "2", "tls", "insecure"); got != false {
 		t.Fatal("受信证书应 insecure=false")
 	}
 }
@@ -292,8 +268,8 @@ func TestRenderClash_结构(t *testing.T) {
 	// 节点块数量(只统计 proxies 段,排除 proxy-groups 的两个组)
 	pStart, pEnd := strings.Index(out, "proxies:"), strings.Index(out, "proxy-groups:")
 	seg := out[pStart:pEnd]
-	if got := strings.Count(seg, "  - name:"); got != 3 {
-		t.Fatalf("proxy 块数 = %d, want 3", got)
+	if got := strings.Count(seg, "  - name:"); got != 2 {
+		t.Fatalf("proxy 块数 = %d, want 2", got)
 	}
 	for _, want := range []string{
 		"type: vless", "uuid: \"8a2f3dfa-ddf3-471a-ab3a-d4110d631d92\"",
@@ -301,8 +277,6 @@ func TestRenderClash_结构(t *testing.T) {
 		"client-fingerprint: chrome", "reality-opts:",
 		"public-key: \"zRAPkZIJ-p7lWdzOi4i4O8JUas5vvd3TzMmYUQm1i2w\"",
 		"short-id: \"cafe2554decd2a45\"",
-		"type: ss", "cipher: \"aes-256-gcm\"",
-		"password: \"7bdf6fbeb3d813be0990afb304c0683111d2f218d65498f622756ac927371b58\"",
 		"type: hysteria2", "skip-cert-verify: true",
 		"name: PROXY", "name: AUTO", "type: url-test",
 		"GEOSITE,cn,DIRECT", "GEOIP,CN,DIRECT", "MATCH,PROXY",
@@ -322,9 +296,9 @@ func TestRenderClash_结构(t *testing.T) {
 // TestRenderClash_H2受信与混淆 受信证书渲染 sni、混淆渲染 obfs。
 func TestRenderClash_H2受信与混淆(t *testing.T) {
 	nodes := fixtureNodes()
-	nodes[2].Insecure = false
-	nodes[2].ServerName = "vpn.example.com"
-	nodes[2].Obfs = "obfs-secret"
+	nodes[1].Insecure = false
+	nodes[1].ServerName = "vpn.example.com"
+	nodes[1].Obfs = "obfs-secret"
 	data, err := RenderClash(nodes)
 	if err != nil {
 		t.Fatalf("渲染失败: %v", err)
@@ -352,7 +326,6 @@ func TestRenderClash_未知类型(t *testing.T) {
 
 // TestCrossArtifact_一致性 三产物(links/sing-box/clash)凭据互查。
 // 黄金断言:同一节点的 uuid/密码在全部产物中一致(防凭据漂移)。
-// 注:links 中 ss 凭据以 base64(method:password) 形态存在,单独解码比对。
 func TestCrossArtifact_一致性(t *testing.T) {
 	nodes := fixtureNodes()
 	links, _ := RenderLinks(nodes)
@@ -365,30 +338,8 @@ func TestCrossArtifact_一致性(t *testing.T) {
 			t.Fatalf("%s 缺 vless uuid(漂移)", name)
 		}
 	}
-	// links 的 ss:// userinfo 解码后 = method:password;另两产物明文一致
-	ssLine := ""
-	for _, line := range strings.Split(strings.TrimSpace(links), "\n") {
-		if strings.HasPrefix(line, "ss://") {
-			ssLine = line
-			break
-		}
-	}
-	u, err := url.Parse(ssLine)
-	if err != nil {
-		t.Fatalf("ss 链接解析失败: %v", err)
-	}
-	raw, err := base64.StdEncoding.DecodeString(u.User.Username())
-	if err != nil || string(raw) != nodes[1].Method+":"+nodes[1].Password {
-		t.Fatal("links 的 ss 凭据与节点不一致(漂移)")
-	}
-	ssPass := nodes[1].Password
-	for name, content := range map[string]string{"sing-box.json": string(sb), "clash.yaml": string(clash)} {
-		if !strings.Contains(content, ssPass) {
-			t.Fatalf("%s 缺 ss 密码(漂移)", name)
-		}
-	}
 	// h2 密码必须同时出现在三个产物
-	h2Pass := nodes[2].Password
+	h2Pass := nodes[1].Password
 	for name, content := range map[string]string{"links": links, "sing-box.json": string(sb), "clash.yaml": string(clash)} {
 		if !strings.Contains(content, h2Pass) {
 			t.Fatalf("%s 缺 h2 密码(漂移)", name)

@@ -1,7 +1,20 @@
 # sing-box 官方客户端对接
 
 sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hysteria2 全部可用)。
-覆盖:macOS/iOS(SFI)、Android(SFA)、Linux/Windows(CLI)。
+官方图形客户端已覆盖全部主流平台(命名即缩写):
+
+| 平台 | 官方客户端 | 获取渠道 |
+|---|---|---|
+| Android | SFA(sing-box for Android) | 官方 GitHub Releases(.apk)/Google Play |
+| iOS/iPadOS | SFI(sing-box for iOS) | App Store(上架名 sing-box MT)/TestFlight |
+| macOS | SFM(sing-box for macOS) | 官方 GitHub Releases(.pkg,Apple/Intel/Universal) |
+| Windows | SFW(sing-box for Windows) | 官方 GitHub Releases(.exe) |
+| Linux | SFL(sing-box for Linux) | 官方 GitHub Releases(.deb/.rpm/.pkg.tar.zst) |
+
+另有 CLI 形态(`sing-box` 命令行)支持全部平台,适用于无图形界面的服务器/网关场景。
+
+> 注:因 Apple 商店政策,SFM 不在 Mac App Store 分发,请从官方发布页获取;
+> 桌面客户端与服务器同为锁版配套,导入本仓库生成的配置即可(见下)。
 
 ## 产物
 
@@ -20,7 +33,18 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 或轻量方式:复制 `links.txt` 中任意一行的分享链接,app 内"从剪贴板导入",
 逐个节点添加(适合只想用某通道的场景)。
 
-### 桌面 CLI(Linux/Windows/macOS)
+### 桌面端(SFM macOS / SFW Windows / SFL Linux)
+
+1. 从官方 GitHub Releases 下载对应平台的安装包(SFM 为 .pkg,SFW 为 .exe,
+   SFL 为 .deb/.rpm)并安装
+2. 把 `dist/sing-box.json` 作为配置文件导入(客户端内"导入配置/从文件添加",
+   不同版本入口略异)
+3. 选中刚导入的配置并启用,节点在 `proxy` 组中手动选择,或切 `auto` 自动选优
+
+> 本仓库的 sing-box.json 不含 TUN 段;桌面官方客户端启用 TUN(全量接管)后同样可加载
+> 该配置,无需改动。
+
+### CLI(任意平台,含服务器/网关)
 
 ```bash
 sing-box run -c sing-box.json
@@ -71,8 +95,8 @@ sing-box run -c sing-box.json
 
 ## FAQ
 
-- **TUN 模式**:官方 app 自带 TUN 开关(移动端连接页),桌面 CLI 如需 TUN
-  按官方文档在配置中加 tun inbound(本仓库的 sing-box.json 不含 TUN,保持通用)。
+- **TUN 模式**:官方 app(移动端)自带 TUN 开关;桌面端视客户端版本是否自带,
+  需要 TUN 时按官方文档在配置中加 tun inbound(本仓库的 sing-box.json 不含 TUN,保持通用)。
 - **导入后无法连接**:确认服务器安全组放行(见 deployment.md 第 3 步);
   连接日志报 timeout 优先查端口放行,报 TLS/Reality 握手失败查伪装站点可达性。
 - **节点较多想分组**:移动端 app 内按节点名(hk-01-vless 等)分组即可。

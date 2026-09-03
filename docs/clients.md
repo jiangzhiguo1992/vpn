@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `links.txt` | 每行一个分享链接(vless:// hysteria2://) | 一切支持链接导入的客户端:sing-box 官方、Hiddify、移动端 app 等 | 剪贴板粘贴 / 扫码 / 手动添加 |
 | `clash.yaml` | Clash 订阅(节点 + PROXY/AUTO 组 + 国内直连分流) | Clash Verge Rev、mihomo、OpenClash、Clash Meta for Android 等 | 导入订阅文件 / URL |
-| `sing-box.json` | sing-box 官方完整配置(mixed 入站 + auto/proxy 组 + 基础路由) | sing-box 官方客户端(SFI/SFA/CLI) | 配置文件导入 / 剪贴板 |
+| `sing-box.json` | sing-box 官方完整配置(mixed 入站 + auto/proxy 组 + 基础路由) | sing-box 官方客户端(SFI/SFA/SFM/SFW/SFL) | 配置文件导入 / 剪贴板 |
 | `sub.txt` | base64 全链接订阅(机场标准格式) | 支持订阅的客户端(可作自托管订阅源内容) | 粘贴订阅内容或挂到任意静态 URL |
 
 ## 2 节点命名与协议
@@ -60,7 +60,7 @@ clash.yaml 的 AUTO 组与 sing-box.json 的 auto 组都是延迟自动选优(ur
 
 | 客户端 | 文档 | 覆盖平台 |
 |---|---|---|
-| sing-box 官方 | [clients/sing-box.md](clients/sing-box.md) | iOS(SFI)/macOS/Android(SFA)/Linux 与桌面 CLI |
+| sing-box 官方 | [clients/sing-box.md](clients/sing-box.md) | Android(SFA)/iOS(SFI)/macOS(SFM)/Windows(SFW)/Linux(SFL) |
 | Hiddify | [clients/hiddify.md](clients/hiddify.md) | Windows/macOS/Linux/Android/iOS |
 | Clash Verge Rev | [clients/clash-verge.md](clients/clash-verge.md) | Windows/macOS/Linux |
 | mihomo / OpenClash | [clients/mihomo.md](clients/mihomo.md) | Linux 与网关盒子(OpenWrt) |

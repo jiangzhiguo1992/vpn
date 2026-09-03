@@ -152,7 +152,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 # 应看到三行 inbound 监听日志:vless-in / ss-in / hy2-in 的 inbound started
 ```
 
-客户端实测见 [clients.md](clients.md)。
+客户端导入与实测见 [clients/](clients/) 下对应客户端文档(sing-box / Hiddify / Clash Verge Rev / mihomo)。
 
 ---
 

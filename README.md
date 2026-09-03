@@ -29,7 +29,7 @@ make deploy
 #    Clash Verge Rev 等 Clash 系  : 导入 dist/clash.yaml
 #    sing-box 官方(SFM/SFW/SFL/SFA/SFI)  : 导入 dist/sing-box.json
 #    手机(任意支持链接的 app)     : 扫码/粘贴 dist/links.txt 里的链接
-#    详细对接见 docs/clients.md
+#    各客户端对接细节见 docs/clients/ 下对应文档
 ```
 
 完整部署指导(买服务器、SSH 密钥、云安全组等)见 [docs/deployment.md](docs/deployment.md)。
@@ -211,8 +211,7 @@ dist/
 | 文档 | 内容 |
 |---|---|
 | [docs/deployment.md](docs/deployment.md) | 部署从 0 到 1:环境准备、买服务器、SSH 密钥、清单填写、云安全组、生成/部署/验证、常见问题与排障 |
-| [docs/clients.md](docs/clients.md) | 客户端对接总览:分发物、节点协议、各客户端导入路径与常见问题 |
-| [docs/clients/sing-box.md](docs/clients/sing-box.md) | sing-box 官方客户端(SFI/SFA/SFM/SFW/SFL)对接与分流配置 |
+| [docs/clients/sing-box.md](docs/clients/sing-box.md) | sing-box 官方客户端(SFI/SFA/SFM/SFW/SFL)对接与分流规则 |
 | [docs/clients/hiddify.md](docs/clients/hiddify.md) | Hiddify(全平台)对接 |
 | [docs/clients/clash-verge.md](docs/clients/clash-verge.md) | Clash Verge Rev(桌面)对接 |
 | [docs/clients/mihomo.md](docs/clients/mihomo.md) | mihomo 内核与 OpenClash(网关盒子)对接 |

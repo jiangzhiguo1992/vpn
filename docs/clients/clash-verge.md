@@ -20,15 +20,15 @@ Clash Verge Rev(内核 mihomo)是桌面三平台最常用的 Clash 系客户端,
 | PROXY | 手动选择:选具体节点,或选 AUTO 让它自动挑延迟最优 |
 | AUTO | url-test 自动选择(每 300s 测一次 www.gstatic.com 延迟) |
 
-## 分流
+## 分流规则
 
-`clash.yaml` 已内置分流规则(顺序):
+`clash.yaml` 已内置分流规则(与产物 rules 段一致,开箱即用无需操作):
 
 ```text
-GEOSITE,cn → 直连      # 国内域名直连
-GEOIP,CN  → 直连       # 国内 IP 直连
-GEOIP,private → 直连   # 内网地址直连
-其余      → PROXY      # 兜底走代理
+GEOSITE,cn,DIRECT            # 国内域名直连
+GEOIP,CN,DIRECT              # 国内 IP 直连
+GEOIP,private,DIRECT,no-resolve  # 内网地址直连(不解析域名)
+MATCH,PROXY                  # 兜底走代理
 ```
 
 Verge Rev 首次运行会自动下载 geodata(需能访问 GitHub,或在国内镜像源设置里换源)。

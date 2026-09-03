@@ -31,6 +31,22 @@ mihomo -d /etc/mihomo            # 默认监听 7890 混合端口
 - 系统代理或透明代理按 mihomo 文档接入(本仓库配置已含 mixed 入站 7890,
   应用指到 `127.0.0.1:7890` 即用)
 
+## 分流规则
+
+`clash.yaml` 内置分流规则(与产物 rules 段一致):
+
+```text
+GEOSITE,cn,DIRECT                # 国内域名直连
+GEOIP,CN,DIRECT                  # 国内 IP 直连
+GEOIP,private,DIRECT,no-resolve  # 内网地址直连(不解析域名)
+MATCH,PROXY                      # 兜底走代理
+```
+
+规则依赖 geodata(GEOSITE/GEOIP 数据源):OpenClash 自带并自动更新;
+裸 mihomo 需自行准备(见上文场景二)。自定义规则(如某域名强制直连)在
+clash.yaml 的 rules 段按 Clash 语法追加后重启生效,或 OpenClash 用配置覆写。
+切"全局模式"= 全部流量走代理(不分流),切回"规则模式"即恢复上述规则。
+
 ## 网关盒子替代思路:服务器端直接分流(可选)
 
 如果盒子只是想要"局域网全局代理",也可以不装内核,直接在能跑 Docker 的盒子上

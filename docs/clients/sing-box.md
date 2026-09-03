@@ -63,7 +63,7 @@ sing-box run -c sing-box.json
   `default_domain_resolver: "dns-direct"`(sing-box 1.12+ 对出站域名解析器的强制要求)
 - `dns`:国内 223.5.5.5(UDP 直连)+ 1.1.1.1(DoH,经 proxy),防泄漏
 
-## 分流:需要国内直连时
+## 分流规则
 
 默认全代理会把国内流量也送出国(慢、费流量)。注意 sing-box **不内置任何分流数据**:
 `geosite`/`geoip` 规则字段已在 sing-box 1.12 移除,国内直连必须用 **rule-set 规则集**

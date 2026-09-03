@@ -8,9 +8,9 @@
 //     直连分流的用户按 docs/clients/sing-box.md 追加规则
 //   - dns 段带国内 UDP 直连与国外 DoH(经 proxy detour)双服务器:
 //     final 走 DoH 防泄漏,域名解析与连接同出口
-//   - route.default_domain_resolver=dns-direct 满足 sing-box 1.12+ 对
-//     出站域名解析器的强制要求(1.14 起缺失即拒启);指向直连 DNS,
-//     不依赖代理隧道先行可用,与 dns.final 走 DoH 的防泄漏分工
+//   - route.default_domain_resolver=dns-direct 满足 sing-box 对出站域名
+//     解析器的要求(1.14 起缺失即拒启,1.12/1.13 缺省仅告警);指向直连
+//     DNS,不依赖代理隧道先行可用,与 dns.final 走 DoH 的防泄漏分工
 //   - 与分享链接同源:节点 outbound 字段 = 链接参数 = 清单凭据,
 //     任何渲染之间不可能漂移
 //

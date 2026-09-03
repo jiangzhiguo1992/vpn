@@ -30,7 +30,7 @@ make check     # build + vet + test + fmt 全量验证(改动后必跑)
 |---|---|---|---|---|
 | Vultr / DigitalOcean | 主力 | $6/月级 | 大厂稳定,东京/新加坡延迟低;被封 IP 可销毁重建换新 | https://vultr.com / https://www.digitalocean.com/ |
 | BandwagonHost | 优化线路 | $50/年级 | CN2 GIA 线路面向中国用户,晚高峰稳 | https://bandwagonhost.com |
-| RackNerd | 备用 | $10-15/年 | 便宜,美西普通线路 | https://racknerd.com |
+| RackNerd / CloudCone | 备用 | $10-15/年 | 便宜,美西普通线路 | https://racknerd.com / https://cloudcone.com |
 | Oracle / Google 免费层 | 零成本验证 | 免费 | 适合先跑通流程,流量有限制 | https://cloud.google.com / https://cloud.oracle.com/ |
 
 **服务器侧需满足**(其余全部由 deploy.sh 自动处理):
@@ -160,6 +160,58 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 
 清单数组里加一段即可,`make gen && make deploy` 一次处理全部;
 客户端产物自动聚合全部服务器的全部通道(每服务器 2 个节点:name-vless / name-h2)。
+
+## 伪装域名相关(Reality 握手目标)
+
+VLESS+Reality 的伪装站点(`vless.server_name`)是客户端握手目标,必须满足条件:国内可直连访问、解析到国外 IP/CDN、支持 TLS1.3 与 HTTP/2(h2)。站点失效或条件不满足时节点直接连不上。微软部分 CDN 证书调整后已不满足条件,本项目默认的 `www.apple.com` 也**可能随时间失效**——节点突然连不上且服务器/防火墙均正常时,优先怀疑伪装站点。
+
+### 验证方法(Chrome,约 30 秒)
+
+1. Chrome 打开目标网站,按 F12 选 **Security(安全)**:出现 TLS1.3 且密钥交换含 X25519,即满足 TLS 条件
+2. 切到 **Network(网络)→ all**,刷新页面,点当前域名的请求:协议为 `h2` 即支持 HTTP/2
+
+两项都满足即可作伪装站点。域名可能随时间失效,用前按上述方法验证。
+
+### 常用候选(节选,失效或不可达即换)
+
+```text
+# Apple(项目默认值)
+www.apple.com
+gateway.icloud.com
+itunes.apple.com
+
+# 开发/技术
+www.python.org
+react.dev
+vuejs.org
+www.java.com
+www.mysql.com
+redis.io
+dl.google.com
+
+# CDN/云/微软
+s0.awsstatic.com
+cdn-dynmedia-1.microsoft.com
+software.download.prss.microsoft.com
+
+# 游戏/娱乐/硬件
+one-piece.com
+player.live-video.net
+academy.nvidia.com
+www.amd.com
+www.samsung.com
+
+# 教育/机构
+www.caltech.edu
+www.suny.edu
+www.suffolk.edu
+```
+
+### 更换步骤
+
+1. 编辑 `servers.json` 的 `vless.server_name` 为验证过的新域名
+2. `make gen && make deploy`(服务端与客户端产物同源同步更新,凭据不变,已分发凭据不失效)
+3. 重新导入客户端产物(links/clash.yaml/sing-box.json 均含新 server_name,旧配置需替换)
 
 ## 端口冲突与自定义
 

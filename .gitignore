@@ -33,6 +33,9 @@ go.work.sum
 # 生成产物(服务端/客户端配置,含凭据,不入库)
 /dist/
 
+# 分流规则文件
+/srs/
+
 # 实际服务器清单(含自动回填的凭据,勿入库;只提交 example-servers.json)
 /servers.json
 

@@ -9,9 +9,11 @@
 //     生成 cert.sh 且 deploy.sh 自动执行;非空 = 受信证书,deploy.sh
 //     校验 cert.pem/key.pem 存在,缺失时报错引导(不生成自签覆盖用户
 //     受信证书意图)
-//   - deploy.sh 幂等可重跑:防火墙放行、Docker 安装兜底、开机自启兜底、
-//     镜像 ghcr 拉取失败回退 docker.io 并 retag、up 前 docker run check
-//     语法校验、up --force-recreate(配置变化不触发 compose 重建)
+//   - deploy.sh 幂等可重跑:防火墙放行、Docker 安装兜底、Compose v2
+//     插件补装(存量 docker 仅 docker-compose v1 时 apt 装
+//     docker-compose-plugin,docker compose 子命令才能用)、开机自启
+//     兜底、镜像 ghcr 拉取失败回退 docker.io 并 retag、up 前 docker
+//     run check 语法校验、up --force-recreate(配置变化不触发 compose 重建)
 //   - 产物文件权限:config.json 0600(含凭据);脚本 0755;compose 0644;
 //     全部显式 Chmod(WriteFile 的 mode 仅创建时生效,重复 gen 会残留
 //     旧权限)
@@ -157,6 +159,17 @@ if ! command -v docker >/dev/null 2>&1; then
   if ! $SUDO sh /tmp/get-docker.sh; then
     echo "==> 官方安装脚本失败(EOL 发行版缺 docker-model-plugin?),回退安装核心包..." >&2
     $SUDO sh -c 'apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -y -qq install docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin'
+  fi
+fi
+
+# 1b. Compose v2 子命令检查(老系统存量 docker 可能只有 docker-compose
+#     v1 而无 compose 插件,docker compose 子命令不可用;幂等,已有
+#     v2 则跳过;非 apt 系发行版安装失败时按提示手动装)
+if ! $SUDO docker compose version >/dev/null 2>&1; then
+  echo "==> 安装 docker-compose-plugin(Compose v2)..."
+  if ! $SUDO sh -c 'apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -y -qq install docker-compose-plugin'; then
+    echo "==> docker-compose-plugin 安装失败,请手动安装后重跑本脚本" >&2
+    exit 1
   fi
 fi
 

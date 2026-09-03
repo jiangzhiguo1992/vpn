@@ -69,7 +69,7 @@ sing-box run -c sing-box.json
 `geosite`/`geoip` 规则字段已在 sing-box 1.12 移除,国内直连必须用 **rule-set 规则集**
 实现——先在 `route.rule_set` 声明规则集(引用官方预编译的 `.srs`),再在路由/DNS 规则里按标签引用。
 
-数据源:SagerNet 官方 sing-geoip / sing-geosite 仓库每次 release 自动把数据编译成按分类
+数据源:SagerNet 官方 sing-geoip(https://github.com/SagerNet/sing-geoip) / sing-geosite(https://github.com/SagerNet/sing-geosite) 仓库每次 release 自动把数据编译成按分类
 拆分的 `.srs`,发布在 `rule-set` 分支,raw 直链即用(release 只发 `.db`,没有 `.srs`,
 不要用 release/latest/download 链接):
 

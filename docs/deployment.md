@@ -26,12 +26,12 @@ make check     # build + vet + test + fmt 全量验证(改动后必跑)
 **一台海外 VPS**,Debian/Ubuntu 系(脚本自动处理 Docker 安装),纯净 IP(未被墙)。
 商家选择社区共识参考(价格以官网为准):
 
-| 商家 | 定位 | 参考价格 | 特点 |
-|---|---|---|---|
-| Vultr / DigitalOcean | 主力 | $6/月级 | 大厂稳定,东京/新加坡延迟低;被封 IP 可销毁重建换新 |
-| BandwagonHost | 优化线路 | $50/年级 | CN2 GIA 线路面向中国用户,晚高峰稳 |
-| RackNerd | 备用 | $10-15/年 | 便宜,美西普通线路 |
-| Oracle / Google 免费层 | 零成本验证 | 免费 | 适合先跑通流程,流量有限制 |
+| 商家 | 定位 | 参考价格 | 特点 |网址 |
+|---|---|---|---|---|
+| Vultr / DigitalOcean | 主力 | $6/月级 | 大厂稳定,东京/新加坡延迟低;被封 IP 可销毁重建换新 | https://vultr.com / https://www.digitalocean.com/ |
+| BandwagonHost | 优化线路 | $50/年级 | CN2 GIA 线路面向中国用户,晚高峰稳 | https://bandwagonhost.com |
+| RackNerd | 备用 | $10-15/年 | 便宜,美西普通线路 | https://racknerd.com |
+| Oracle / Google 免费层 | 零成本验证 | 免费 | 适合先跑通流程,流量有限制 | https://cloud.google.com / https://cloud.oracle.com/ |
 
 **服务器侧需满足**(其余全部由 deploy.sh 自动处理):
 

@@ -239,6 +239,8 @@ func TestWriteArtifacts_文件与权限(t *testing.T) {
 		"for p in 8443", // hy2 UDP
 		ImageVersion,
 		"docker.io/sagernet/sing-box",
+		"docker compose version",
+		"docker-compose-plugin",
 		"check -c /etc/sing-box/config.json",
 		"force-recreate",
 	} {

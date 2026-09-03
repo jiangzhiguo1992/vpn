@@ -3,13 +3,6 @@
 目标:在你的一台海外服务器上跑起 sing-box,并把全部客户端对接产物生成本地。
 全程只依赖:本地电脑(Go 1.27+、ssh/scp)+ 一台海外 VPS。服务器上不需要装任何 Go 环境。
 
-完成后你将拥有:
-
-| 通道 | 端口 | 协议 | 用途 |
-|---|---|---|---|
-| VLESS+Reality | 443(TCP) | 伪装 TLS 流量,抗封锁主力 | Clash 系 / sing-box 系 / Hiddify 全支持 |
-| Hysteria2 | 8443(UDP/QUIC) | 自签证书,逃生/提速 | 网络受限时的备选通道 |
-
 ---
 
 ## 第 0 步:本地环境自检(一次性)
@@ -24,10 +17,9 @@ macOS / Linux / Windows(10 1809+,需启用内置 OpenSSH 客户端)均可,只需
 
 ```bash
 cd <本项目目录>
-make doctor    # 全绿即可继续
+make doctor    # 自动诊断环境（Go 版本、代理），全绿即可继续
+make check     # build + vet + test + fmt 全量验证(改动后必跑)
 ```
-
-国内网络无需额外配置(GOPROXY 只影响第三方依赖拉取,本项目无第三方依赖)。
 
 ## 第 1 步:准备服务器(一次性)
 
@@ -43,9 +35,13 @@ make doctor    # 全绿即可继续
 
 **服务器侧需满足**(其余全部由 deploy.sh 自动处理):
 
-1. SSH 可登录(root 或可 sudo 用户)
-2. 云安全组/防火墙放行入站(见第 3 步,最容易漏的一步)
-3. IPv6 可选:需要国外 v6 目标可达时给实例分配 v6 地址(清单 address 填 v6 即可)
+| 配置项 | 要求 | 检查/操作 |
+|---|---|---|
+| SSH 服务 | 已开启（云服务器默认开启） | 下述 `ssh` 命令验证 |
+| 用户权限 | root 或 **NOPASSWD sudo**（deploy.sh 用 `sudo -n` 非交互执行） | `sudo -n true` 验证（无输出=直过，报 sudoers/需密码=无 NOPASSWD） |
+| **云安全组/防火墙** | 放行 VLESS 端口（默认 443，TCP）与 H2 端口（默认 8443，**TCP + UDP**）的入站 | **云厂商控制台加规则**（最易漏：不放行 = 客户端连不上）；系统防火墙由 deploy.sh 自动放行 |
+| IPv6 出口（可选） | 需要**国外 v6 目标**可达时：实例分配 v6 地址 + 安全组放行 v6 的 443/8443 | 云厂商控制台；v6栏填`::/0`，对应v4的`0.0.0.0/0`。仅 v4 时国外 v6 目标不可达（客户端自动回退 v4） |
+| 域名解析（可选） | `address` 用域名时，DNS A 记录指向服务器 IP | 域名服务商控制台 |
 
 ## 第 2 步:SSH 免密登录配置(一次性,deploy 的前提)
 
@@ -55,11 +51,25 @@ make doctor    # 全绿即可继续
 # 1. 生成密钥(默认 ~/.ssh/id_ed25519;提示 passphrase 直接回车=空密码)
 ssh-keygen -t ed25519
 
-# 2. 拷贝公钥到服务器(输入一次密码后即免密;或到云控制台粘贴公钥)
+# 2. 云控制台粘贴公钥，或以下命令拷贝公钥到服务器(输入一次密码后即免密)
 ssh-copy-id root@服务器IP
 ```
 
-验证:`ssh root@服务器IP "uname -a"` 能直接输出(不再问密码)即可。
+查看公钥（复制给服务器/云控制台用）：
+- macOS / Linux：
+  ```bash
+  cat ~/.ssh/id_ed25519.pub
+  ```
+- Windows PowerShell：
+  ```bash
+  type $env:USERPROFILE\.ssh\id_ed25519.pub
+  ```
+- Windows CMD：
+  ```bash
+  type %USERPROFILE%\.ssh\id_ed25519.pub
+  ```
+
+验证（本地）:`ssh root@服务器IP "uname -a"` 能直接输出(不再问密码)即可。
 
 ## 第 3 步:填写服务器清单(每台服务器一段)
 
@@ -75,7 +85,7 @@ cp example-servers.json servers.json
     {
       "name": "hk-01",
       "location": "香港",
-      "address": "1.2.3.4",
+      "address": "服务器IP/域名",
       "ssh": { "user": "root", "port": 22 },
       "vless": { "port": 443, "server_name": "www.apple.com" },
       "hysteria2": { "port": 8443 }
@@ -86,35 +96,24 @@ cp example-servers.json servers.json
 
 ### 字段说明
 
-| 字段 | 必填 | 类型 | 说明 |
-|---|---|---|---|
-| `name` | 是 | 身份 | 服务器唯一标识(如 `hk-01`),同时是产物目录名与客户端节点名;仅允许字母/数字/`._-` |
-| `location` | 否 | 身份 | 显示用地区(如"香港"),透传到客户端节点列表 |
-| `address` | 是 | 身份 | 客户端连接地址:域名或裸 IP。**IP 直连最简单**(推荐个人场景);IPv6 直接填裸地址(如 `2001:db8::1`);**不要带端口**(`1.2.3.4:443` 会被拒绝) |
-| `ssh.user` | 否 | 身份 | 部署用户,默认 `root`(仅 deploy 用) |
-| `ssh.port` | 否 | 身份 | SSH 端口,默认 `22`(仅 deploy 用) |
-| `vless.port` | 否 | 身份 | VLESS 监听端口,默认 `443` |
-| `vless.server_name` | 是(有 vless 时) | 身份 | 伪装站点(Reality 握手目标),推荐 `www.apple.com`(实测可用) |
-| `hysteria2.port` | 否 | 身份 | H2 监听端口,默认 `8443`(仅 UDP) |
-| `hysteria2.server_name` | 否 | 身份 | 证书域名,默认不填(=IP+自签证书,客户端跳过校验);仅当你用受信证书(如 Let's Encrypt)时才填证书域名 |
-| `hysteria2.obfs_password` | 否 | 身份 | salamander 混淆密码,不填=不启用混淆 |
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `name` | ✅ | 服务器唯一标识(如 `hk-01`),同时是产物目录名与客户端节点名;仅允许字母/数字/`._-` |
+| `location` | ❌ | 显示用地区(如"香港"),透传到客户端节点列表 |
+| `address` | ✅ | 客户端连接地址:域名或裸 IP。**IP 直连最简单**(推荐个人场景);IPv6 直接填裸地址(如 `2001:db8::1`);**不要带端口**(`1.2.3.4:443` 会被拒绝) |
+| `ssh.user` | ❌ | 部署用户,默认 `root`(仅 deploy 用) |
+| `ssh.port` | ❌ | SSH 端口,默认 `22`(仅 deploy 用) |
+| `vless.port` | ❌ | VLESS 监听端口,默认 `443` |
+| `vless.server_name` | ⚠️ | 有 vless 时必填，伪装站点(Reality 握手目标),推荐 `www.apple.com`(实测可用) |
+| `hysteria2.port` | ❌ | H2 监听端口,默认 `8443`(仅 UDP) |
+| `hysteria2.server_name` | ❌ | 证书域名,默认不填(=IP+自签证书,客户端跳过校验);仅当你用受信证书(如 Let's Encrypt)时才填证书域名 |
+| `hysteria2.obfs_password` | ❌ | salamander 混淆密码,不填=不启用混淆 |
 
 **凭据字段**(`vless.private_key/uuid/short_id`、`hysteria2.password`):无需填写,
 `make gen` 首次自动生成并写回清单,再次 gen 复用(幂等)。清单含凭据,请妥善保管(自动 0600 权限)。
 
 **规则**:`name`/`address` 非空且不重复;至少配置一个通道;同服务器各通道端口不得冲突;
 `server_name` 不能含空格或 `://`。
-
-### 云安全组放行(每台服务器,控制台操作)
-
-放行与你清单一致的实际端口(deploy.sh 只会放行服务器系统防火墙,云安全组需手动):
-
-| 端口 | 协议 | 说明 |
-|---|---|---|
-| 443 | TCP | VLESS+Reality |
-| 8443 | UDP | Hysteria2(纯 QUIC,仅 UDP;TCP 放行冗余无妨) |
-
-> 最易漏的一步:安全组不放行 = 客户端永远连不上。改端口时记得同步改安全组。
 
 ## 第 4 步:生成全部产物
 
@@ -124,6 +123,8 @@ make gen
 
 输出 `dist/` 产物,含义见根 README 的产物结构。此时清单 `servers.json` 已回填全部凭据
 (再次 `make gen` 不会翻新,已分发的客户端不受影响)。
+
+`make clean`：清理 dist/ 产物(servers.json 凭据保留)
 
 ## 第 5 步:部署到服务器
 
@@ -151,8 +152,7 @@ ssh root@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml logs --
 # 应看到三行 inbound 监听日志:vless-in / ss-in / hy2-in 的 inbound started
 ```
 
-客户端实测见 [clients.md](clients.md)。推荐的验证顺序:
-先桌面 Clash Verge Rev 导入 `clash.yaml` 验证 443 通道,再手机扫 `links.txt` 的链接。
+客户端实测见 [clients.md](clients.md)。
 
 ---
 

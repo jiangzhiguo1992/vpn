@@ -216,15 +216,3 @@ dist/
 | [docs/clients/hiddify.md](docs/clients/hiddify.md) | Hiddify(全平台)对接 |
 | [docs/clients/clash-verge.md](docs/clients/clash-verge.md) | Clash Verge Rev(桌面)对接 |
 | [docs/clients/mihomo.md](docs/clients/mihomo.md) | mihomo 内核与 OpenClash(网关盒子)对接 |
-
-## 6 开发与验证
-
-```bash
-make check        # build + vet + test + fmt 全量验证(改动后必跑)
-make test-race    # 竞态检测(可选)
-make clean        # 清理 dist/ 产物(servers.json 凭据保留)
-```
-
-验证体系分四层:单测(校验/回填幂等/链接解析/渲染结构,表驱动含边界异常)、一致性黄金断言(同一凭据在服务端配置与各客户端产物中一致)、cmd 冒烟(临时清单 → 全产物 → 幂等)、真机(部署后服务器侧 sing-box check + 容器日志 inbound started + 客户端实测连通)。
-
-代码与文档规范见 [AGENTS.md](AGENTS.md);项目采用简体中文注释与文档。

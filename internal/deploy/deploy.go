@@ -139,16 +139,25 @@ func sshHost(host string) string {
 }
 
 // sshBaseArgs 返回 ssh/scp 公共基础参数:非默认端口附加端口参数 + 超时
-// 保护 + 非交互三件套。
+// 保护 + 非交互三件套。纯委托 baseArgs(端口解析自清单 SSH 配置)。
 //
 // 调用说明:ssh 与 scp 端口参数形态不同(ssh -p / scp -P),由调用方传
 // portFlag。端口 0/22 视为默认不附加。
 func sshBaseArgs(s *conf.Server, portFlag string) []string {
-	args := make([]string, 0, 10)
 	port := 22
 	if s.SSH != nil && s.SSH.Port != 0 {
 		port = s.SSH.Port
 	}
+	return baseArgs(port, portFlag)
+}
+
+// baseArgs 返回 ssh/scp 公共基础参数(纯函数,供清单部署与 OpenWrt
+// 盒子部署共用):非 22 端口附加端口参数 + 超时保护 + 非交互三件套。
+//
+// 调用说明:port 为实际 SSH 端口(22 不附加);portFlag 按命令形态传
+// ssh 用 "-p"、scp 用 "-P"(scp 的 -p 是 preserve-times 语义)。
+func baseArgs(port int, portFlag string) []string {
+	args := make([]string, 0, 10)
 	if port != 22 {
 		args = append(args, portFlag, strconv.Itoa(port))
 	}

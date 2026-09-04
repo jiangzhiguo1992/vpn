@@ -2,7 +2,7 @@
 
 一套自建 VPN(代理)方案:sing-box 服务端 + 多客户端配置生成。
 填写一份服务器清单,本地一条命令生成全部产物,再一条命令把服务端部署到海外服务器;
-任意设备用主流客户端(sing-box 官方 / Hiddify / Clash Verge Rev / mihomo 等)导入即用。
+任意设备用主流客户端(sing-box 官方 / Hiddify 等)导入即用。
 
 > 定位:个人/小团队自用,极简无面板,清单驱动,服务端无状态。
 > 不做什么:不做多用户面板、不做流量统计、不维护在线订阅服务。
@@ -26,9 +26,8 @@ make gen
 make deploy
 
 # 5. 客户端导入
-#    Clash Verge Rev 等 Clash 系  : 导入 dist/clash.yaml
-#    sing-box 官方(SFM/SFW/SFL/SFA/SFI)  : 导入 dist/sing-box.json 或 dist/sing-box-*.json
-#    手机(任意支持链接的 app)     : 扫码/粘贴 dist/links.txt 里的链接
+#    sing-box 官方(SFM/SFW/SFL/SFA/SFI)  : 桌面/移动端导入 dist/sing-box.json 或对应平台的 sing-box-*.json
+#    Hiddify 及任意支持链接的 app  : 扫码/粘贴 dist/links.txt 里的链接
 #    各客户端对接细节见 docs/clients/ 下对应文档
 ```
 
@@ -42,18 +41,18 @@ make deploy
 
 | 内核 | 协议支持面 | 服务端部署形态 | 客户端生态 | 说明 |
 |---|---|---|---|---|
-| **sing-box**(本方案) | 全:VLESS/Reality、Hysteria2、SS、Trojan、VMess 等 | 官方镜像单容器,配置驱动 | sing-box 官方客户端/Hiddify 与其同源,Clash 系兼容其服务端 | 现代、跨平台支持最完善;协议/TLS/DNS 一体化 |
+| **sing-box**(本方案) | 全:VLESS/Reality、Hysteria2、SS、Trojan、VMess 等 | 官方镜像单容器,配置驱动 | sing-box 官方客户端/Hiddify 与其同源,主流客户端兼容其服务端 | 现代、跨平台支持最完善;协议/TLS/DNS 一体化 |
 | Xray-core | 全:VLESS/Reality 生态最成熟 + VMess/Trojan | 常配 3x-ui 等面板;可作库(需自行封装) | 客户端支持广 | 面板生态成熟,但服务端有状态,多用户/计量场景才需要 |
-| mihomo(Clash 系) | 客户端协议广;服务端 inbound 能力弱 | 定位客户端内核,不宜作服务端 | OpenClash 等客户端场景成熟 | 规则引擎最强,服务端不是其定位 |
 | Shadowsocks | 仅 SS 单协议 | 轻量单进程,部署最简单 | 客户端兼容最广(一切客户端都认 SS) | 单协议无逃生通道,流量特征明显、抗封锁弱 |
+| mihomo(Clash 系) | 客户端协议广;服务端 inbound 能力弱 | 定位客户端内核,不宜作服务端 | OpenClash 等客户端场景成熟 | 规则引擎最强,服务端不是其定位 |
 
-**选型结论**:服务端选 sing-box,理由是可单容器承载全部目标协议、与主流客户端生态同源(官方客户端/Hiddify 同内核,Clash 系对接无障碍)、配置驱动可纯产物部署;Xray 内核留给"面板多用户"场景(见 2.2);mihomo 留给客户端侧;轻量 SS 服务端虽部署最简单,但单协议且抗封锁弱,不满足主通道与逃生通道并存的需求。
+**选型结论**:服务端选 sing-box,理由是可单容器承载全部目标协议、与主流客户端生态同源(官方客户端/Hiddify 同内核)、配置驱动可纯产物部署;Xray 内核留给"面板多用户"场景(见 2.2);轻量 SS 服务端虽部署最简单,但单协议且抗封锁弱,不满足主通道与逃生通道并存的需求。
 
 ### 2.2 主流方案对比(不自建面板 / 不手搓配置 / 不买机场)
 
 | 方案 | 服务端 | 多用户/订阅 | 部署与运维 | 客户端对接 | 适用场景 |
 |---|---|---|---|---|---|
-| **本方案**(清单驱动生成) | sing-box 单容器双协议,host 网络 | 无面板,单用户;节点变更重新分发 | `make gen && make deploy` 幂等闭环,服务器无状态可随时重建 | 生成四类分发物(links/clash/sing-box/订阅),主流客户端全兼容 | 个人/小团队自用,要可控与低运维,不要订阅托管 |
+| **清单驱动生成**(本方案) | sing-box 单容器双协议,host 网络 | 无面板,单用户;节点变更重新分发 | `make gen && make deploy` 幂等闭环,服务器无状态可随时重建 | 生成三类分发物(链接/订阅/sing-box 配置),主流客户端全兼容 | 个人/小团队自用,要可控与低运维,不要订阅托管 |
 | xray 面板(3x-ui/xboard 等) | xray 多协议 | Web 面板:多用户、订阅 URL、流量统计 | 服务器上装面板 + 数据库,配置在服务器,迁移/备份较繁 | 客户端吃订阅 URL,多设备同步方便 | 多人共享/类机场运营,需要用户与计量 |
 | 手写 sing-box 配置裸部署 | sing-box 单机 | 无工具,手动管理 | ssh + 编辑器维护配置,systemd/docker 手动编排 | 无生成物,客户端配置全部手搓 | 想完全掌控内核细节且接受手工维护 |
 | 商业机场订阅 | 现成服务 | 买即用,自带订阅与分流 | 零运维,流量/速率受商家限制 | 客户端导入订阅即用 | 不想管理服务器、要求省心 |
@@ -64,8 +63,8 @@ make deploy
 
 | 协议 | 传输层 | 抗封锁能力 | 性能 | 证书 | 客户端支持面 | 本方案定位 |
 |---|---|---|---|---|---|---|
-| **VLESS+Reality** | TCP | 最强:TLS 指纹伪装真实站点,主动探测难识别 | 高 | 无需 | 全主流(2024+ 的 Clash 系、sing-box 系、Hiddify) | **主通道** |
-| **Hysteria2** | QUIC/UDP | 强:UDP 特征,弱网抗丢包 | 高(弱网优势) | 自签即可 | 广(Clash 内核 v1.18+、sing-box 系、Hiddify) | **逃生/提速通道** |
+| **VLESS+Reality** | TCP | 最强:TLS 指纹伪装真实站点,主动探测难识别 | 高 | 无需 | 全主流(2024+ 客户端) | **主通道** |
+| **Hysteria2** | QUIC/UDP | 强:UDP 特征,弱网抗丢包 | 高(弱网优势) | 自签即可 | 广(主流内核 v1.18+ 起) | **逃生/提速通道** |
 | Trojan | TCP | 中:伪装 HTTPS | 中 | 需域名证书 | 广 | 未采用:与 Reality 能力重叠,多出证书依赖 |
 | VMess+WS+TLS | TCP(WebSocket) | 中:依赖域名与 TLS | 中 | 需域名证书 | 广 | 未采用:同上 |
 | TUIC | QUIC/UDP | 中 | 高 | 自签 | 较窄 | 未采用:与 Hy2 定位重叠,客户端支持面更窄 |
@@ -79,32 +78,32 @@ make deploy
 
 | 平台 | 推荐客户端 | 使用产物 | 备选 |
 |---|---|---|---|
-| Windows | Clash Verge Rev | clash.yaml | Hiddify / sing-box 官方(SFW) |
-| macOS | Clash Verge Rev | clash.yaml | Hiddify / sing-box 官方(SFM) |
-| Linux 桌面 | Clash Verge Rev / mihomo | clash.yaml | sing-box 官方(SFL) |
-| Android | Hiddify | links.txt(链接/扫码) | sing-box(SFA) / Clash Meta for Android |
+| Windows | sing-box 官方(SFW) | sing-box-sfw.json | Hiddify |
+| macOS | sing-box 官方(SFM) | sing-box-sfm.json | Hiddify |
+| Linux 桌面 | sing-box 官方(SFL) | sing-box-sfl.json | Hiddify |
+| Android | Hiddify | links.txt(链接/扫码) | sing-box(SFA) |
 | iOS/iPadOS | Hiddify | links.txt(链接/扫码) | sing-box(SFI) / Shadowrocket 等 |
-| 网关盒子(OpenWrt) | OpenClash(mihomo 内核) | clash.yaml(上传/订阅) | 裸 mihomo / sing-box |
+| 网关盒子(OpenWrt) | sing-box(官方 OpenWrt 包,裸部署) | sing-box-openwrt.json | - |
 | Android TV 等 | Hiddify 或对应 Android 客户端 | links.txt | - |
 
 ### 3.2 协议能力矩阵(客户端 × 双通道)
 
-| 协议 | sing-box 官方 | Hiddify | Clash 系(mihomo 内核) | iOS 第三方 app | 说明 |
-|---|---|---|---|---|---|
-| VLESS+Reality(443 TCP) | 支持 | 支持 | 支持(内核 2024+) | 部分支持(新版 Shadowrocket 等) | 主力通道,抗封锁 |
-| Hysteria2(8443 UDP) | 支持 | 支持 | 支持(内核 v1.18+) | 部分支持 | QUIC 逃生通道 |
+| 协议 | sing-box 官方 | Hiddify | iOS 第三方 app | 说明 |
+|---|---|---|---|---|
+| VLESS+Reality(443 TCP) | 支持 | 支持 | 部分支持(新版 Shadowrocket 等) | 主力通道,抗封锁 |
+| Hysteria2(8443 UDP) | 支持 | 支持 | 部分支持 | QUIC 逃生通道 |
 
 iOS 无 Hiddify 条件时用区外商店的 sing-box(SFI)或 Shadowrocket 等第三方 app;第三方 app 不支持 Reality 时优先选 h2 节点。
 
 ### 3.3 客户端功能差异
 
-| 能力 | Clash 系 | Hiddify | sing-box 官方 |
-|---|---|---|---|
-| 国内直连分流 | 内置(geodata) | 内置规则 | sing-box.json 内置(remote rule-set,国内直连) |
-| 广告拦截 | 需自行加规则集 | 内置 | 内置(同 rule-set 机制,连接层 reject) |
-| 按应用分流 | TUN 模式 + 规则 | 内置 | 视平台 |
-| 订阅更新 | URL 订阅 | URL 订阅 | 配置/订阅导入 |
-| 延迟测速/自动选优 | AUTO 组(内置) | 内置 | auto 组(内置) |
+| 能力 | Hiddify | sing-box 官方 |
+|---|---|---|
+| 国内直连分流 | 内置规则 | sing-box.json 内置(remote rule-set,国内直连) |
+| 广告拦截 | 内置 | 内置(同 rule-set 机制,连接层 reject) |
+| 按应用分流 | 内置 | 视平台 |
+| 订阅更新 | URL 订阅 | 配置/订阅导入 |
+| 延迟测速/自动选优 | 内置 | auto 组(内置) |
 
 客户端本身自带分流域名与规则时(如 Hiddify),节点只管"连哪个服务器",无需重复配置分流。
 
@@ -112,11 +111,11 @@ iOS 无 Hiddify 条件时用区外商店的 sing-box(SFI)或 Shadowrocket 等第
 
 | 场景 | 怎么用 |
 |---|---|
-| 桌面三平台通用 | Clash Verge Rev 导入 clash.yaml,PROXY 组选 AUTO |
+| 桌面三平台通用 | sing-box 官方(SFM/SFW/SFL)导入对应产物文件(或 Hiddify 扫链接) |
 | 手机快速上网 | Hiddify 扫 links.txt 的 vless 链接 |
 | iPhone 只有区外商店第三方 app | 装 sing-box(SFI)导入 sing-box.json,或第三方 app 用 h2 节点链接 |
-| 软路由让全屋设备代理 | OpenClash 导入 clash.yaml 或订阅 |
-| 命令行/服务器环境 | sing-box CLI 跑 sing-box.json,或 mihomo 跑 clash.yaml |
+| 网关盒子(OpenWrt)整网代理 | `make gen` 后 `vpn openwrt -host root@<盒子IP>` 一键部署(见 docs/openwrt.md) |
+| 命令行/服务器环境 | sing-box CLI 跑 sing-box.json |
 
 ## 4 架构与设计
 
@@ -141,7 +140,7 @@ flowchart LR
         H["docker compose 起 sing-box 镜像<br/>host 网络,双协议监听"]
     end
     subgraph 客户端[客户端:全平台]
-        I["Clash 系 / sing-box 官方 / Hiddify<br/>及任意支持链接导入的 app"]
+        I["sing-box 官方 / Hiddify<br/>及任意支持链接导入的 app"]
     end
     A --> B
     D --> F --> G --> H
@@ -157,7 +156,7 @@ vpn/
 ├── internal/
 │   ├── conf/              清单模型:校验、凭据回填、原子保存、节点推导
 │   ├── server/            服务端产物生成(sing-box 配置 + 编排/部署脚本)
-│   ├── client/            客户端产物生成(分享链接/订阅/Clash/sing-box)
+│   ├── client/            客户端产物生成(分享链接/订阅/sing-box)
 │   └── deploy/            远程部署执行(ssh/scp 编排)
 ├── docs/                  部署与客户端对接文档
 ├── example-servers.json   清单示例(复制为 servers.json 后填写)
@@ -166,7 +165,7 @@ vpn/
 └── AGENTS.md              项目 Agent 协作规范
 ```
 
-生成产物结构(`dist/`,每台服务器一个部署目录 + 四份客户端分发物):
+生成产物结构(`dist/`,每台服务器一个部署目录 + 三类客户端分发物:链接/订阅/sing-box 配置):
 
 ```text
 dist/
@@ -177,11 +176,11 @@ dist/
 │   └── cert.sh            H2 自签证书脚本(仅自签模式服务器)
 ├── links.txt              全部节点分享链接(每行一个,剪贴板/扫码导入)
 ├── sub.txt                通用订阅(base64 全链接,机场标准格式)
-├── clash.yaml             Clash 系订阅(节点组 + 国内直连分流规则)
 ├── sing-box.json          sing-box 官方客户端完整配置(通用版,CLI/移动端)
 ├── sing-box-sfm.json      sing-box 官方桌面 SFM 版(macOS TUN 全接管 + 系统代理卡片)
 ├── sing-box-sfw.json      sing-box 官方桌面 SFW 版(Windows 连接即自动设系统代理)
-└── sing-box-sfl.json      sing-box 官方桌面 SFL 版(Linux TUN 全接管,auto_redirect)
+├── sing-box-sfl.json      sing-box 官方桌面 SFL 版(Linux TUN 全接管,auto_redirect)
+└── sing-box-openwrt.json  sing-box 官方 OpenWrt 版(网关盒子 TUN 全接管,配合 vpn openwrt 一键部署)
 ```
 
 ### 4.3 工程决策(怎么实现)
@@ -191,7 +190,7 @@ dist/
 | 本地生成静态产物,不要面板/在线订阅 | 清单文件即"填写服务器信息"的载体,生成即分发;静态产物零运行时依赖,服务器可随时销毁重建;无订阅则无过期/鉴权/托管问题。未来要在线订阅,把 `sub.txt` 托管到任意静态 URL 即完成 |
 | 生成器零第三方依赖(纯标准库) | 配置均为固定结构文本,模板渲染足够;不引入 sing-box option 库(旧方案重依赖、构建标签、分钟级编译,本方案构建秒级)。正确性由"模板 + 渲染后 json.Valid 校验 + 一致性单测 + 服务器上 docker run check 最终把关"保证 |
 | 凭据只在本地生成回填(服务端无状态) | Reality 密钥/UUID 与 Hy2 密码全部在 `make gen` 时生成写回清单(0600 原子写,严格模式解析防拼错);服务器只消费静态 config.json。服务器可任意重建,凭据不变则已分发客户端免更新;服务端/客户端产物从同一清单渲染,凭据不可能漂移(单测黄金断言守护) |
-| 分流规则按客户端形态取舍 | clash.yaml 内置国内直连(GEOSITE,cn / GEOIP,CN),Clash 系自带 geodata 开箱可用;sing-box 四产物统一内置国内直连分流与广告拦截(官方 remote rule-set,经代理下载并缓存,1.14+) |
+| 分流规则按客户端形态取舍 | sing-box 官方客户端配置统一内置国内直连分流与广告拦截(官方 remote rule-set,经代理下载并缓存,1.14+);links/订阅只含节点,分流交给 Hiddify 等自带规则的客户端 |
 
 ### 4.4 安全模型
 
@@ -212,7 +211,6 @@ dist/
 | 文档 | 内容 |
 |---|---|
 | [docs/deployment.md](docs/deployment.md) | 部署从 0 到 1:环境准备、买服务器、SSH 密钥、清单填写、云安全组、生成/部署/验证、常见问题与排障 |
+| [docs/openwrt.md](docs/openwrt.md) | OpenWrt 网关盒子接入(裸 sing-box):一键部署、DNS 让位、升级、回滚、排障 |
 | [docs/clients/sing-box.md](docs/clients/sing-box.md) | sing-box 官方客户端(SFI/SFA/SFM/SFW/SFL)对接与分流规则 |
 | [docs/clients/hiddify.md](docs/clients/hiddify.md) | Hiddify(全平台)对接 |
-| [docs/clients/clash-verge.md](docs/clients/clash-verge.md) | Clash Verge Rev(桌面)对接 |
-| [docs/clients/mihomo.md](docs/clients/mihomo.md) | mihomo 内核与 OpenClash(网关盒子)对接 |

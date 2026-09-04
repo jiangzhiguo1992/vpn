@@ -8,7 +8,7 @@ Hiddify(sing-box 内核 fork)覆盖 Windows / macOS / Linux / Android / iOS 全�
 
 ## 产物
 
-Hiddify 用"分享链接"或"订阅"添加节点,不直接吃 clash/sing-box 配置:
+Hiddify 用"分享链接"或"订阅"添加节点,不直接吃完整客户端配置文件:
 
 - `dist/links.txt`:逐行复制或扫码
 - `dist/sub.txt`:订阅内容(支持把任意静态 URL 作为订阅源)

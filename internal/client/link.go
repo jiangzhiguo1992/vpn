@@ -5,8 +5,6 @@
 //     剪贴板/扫码/手动添加,覆盖一切支持链接导入的客户端
 //   - sub.txt       通用订阅(base64 编码的全部链接,机场标准格式),
 //     支持订阅的客户端直接使用;也可作为自托管订阅源的内容
-//   - clash.yaml    Clash 系(mihomo/Clash Verge Rev/OpenClash 等)订阅,
-//     含代理组与国内直连分流规则
 //   - sing-box.json sing-box 官方客户端(桌面 CLI/SFI/SFA)完整配置,
 //     含 mixed 入站/自动选择组/基础路由
 //
@@ -15,8 +13,7 @@
 //     同凭据,产物之间不可能漂移(防凭据漂移测试见 *_test.go)
 //   - 字符串值统一经 JSON 转义后进入模板(密码/SNI 防注入),渲染后
 //     语法校验双保险(缺占位符静默产出 <no value>)
-//   - 分流规则做"开箱即用"取舍:clash 用 GEOSITE/GEOIP 关键词(主流
-//     GUI 客户端自带 geodata);sing-box.json 用全局代理 + 内网直连
+//   - 分流规则做"开箱即用"取舍:sing-box.json 用全局代理 + 内网直连
 //     形态(不依赖 .srs 外置规则文件,官方 app 导入即用),需要国内
 //     分流的用户按 docs/clients/sing-box.md 自行追加
 //
@@ -172,7 +169,7 @@ func renderJSON(tpl string, vals map[string]string) ([]byte, error) {
 }
 
 // jq 把字符串转义为 JSON 字面量(含引号;与 YAML 双引号字符串转义集
-// 相同,clash 渲染复用)。
+// 相同)。
 func jq(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

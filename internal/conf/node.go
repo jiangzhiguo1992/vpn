@@ -4,7 +4,7 @@
 //   - 客户端节点由服务端通道反推(Nodes),两端共享同一清单同一凭据,
 //     服务端 config.json 与客户端任何产物之间不可能漂移
 //   - 节点名 = <服务器名>-<协议短名>(vless/h2),同时用于分享链接
-//     fragment、clash 代理名、sing-box outbound tag
+//     fragment 与 sing-box outbound tag
 //   - Hysteria2 节点 insecure 由 server_name 推导:空(自签证书场景,
 //     IP 直连或域名+自签)= true;非空(受信证书域名场景)= false,
 //     渲染方直接取用,无需业务判断

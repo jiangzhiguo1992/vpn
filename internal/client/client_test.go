@@ -220,6 +220,14 @@ func TestRenderSingBox_结构(t *testing.T) {
 			t.Fatalf("rule_set[%d].tag = %v, want %s", i, walk(rs[i], "tag"), want)
 		}
 	}
+	// v14 形态守护(与 OpenWrt legacy 双形态互锚):桌面版 rule_set 各项目前
+	// 绝不带 download_detour,下载 detour 由 http_clients/default_http_client
+	// 承担;若模板误把 legacy 分支带进桌面产物,这里即刻暴露
+	for i := range rs {
+		if walk(rs[i], "download_detour") != nil {
+			t.Fatalf("rule_set[%d] 不应含 download_detour(桌面 v14 形态): %v", i, walk(rs[i], "download_detour"))
+		}
+	}
 	if got := walk(m, "route", "default_http_client"); got != "rule-set-download" {
 		t.Fatalf("route.default_http_client = %v", got)
 	}
@@ -396,6 +404,90 @@ func TestRenderSingBoxSFL_结构(t *testing.T) {
 	checkTunVariant(t, data, plain, true, map[string]any{"auto_redirect": true})
 }
 
+// TestRenderSingBoxOpenWrt_结构 OpenWrt 网关盒子版:inbounds 仅 tun(无
+// mixed/无 platform),auto_redirect=true 接管 fw4、strict_route=false 让位
+// 既有路由策略;route.auto_detect_interface 防环;cache_file 显式落盘
+// /etc/sing-box/cache.db(tmpfs 重启丢失问题);规则集下载为 legacy 形态
+// (无 http_clients/default_http_client,rule_set 每项 download_detour=
+// proxy——官方源 1.12/1.13 兼容);outbounds 与通用版一致。
+func TestRenderSingBoxOpenWrt_结构(t *testing.T) {
+	nodes := fixtureNodes()
+	data, err := RenderSingBoxOpenWrt(nodes)
+	if err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	m := parseJSONMap(t, data)
+	// inbounds 恰 1 个且为 tun(无 mixed/无 platform——网关盒子形态)
+	inbounds, _ := m["inbounds"].([]any)
+	if len(inbounds) != 1 {
+		t.Fatalf("inbounds 数量 = %d, want 1(仅 tun)", len(inbounds))
+	}
+	tun, _ := inbounds[0].(map[string]any)
+	if tun["type"] != "tun" || tun["tag"] != "tun-in" {
+		t.Fatalf("inbounds[0] 应为 tun: %v", tun)
+	}
+	if tun["auto_route"] != true {
+		t.Fatal("tun 应 auto_route=true(接管系统流量)")
+	}
+	if tun["auto_redirect"] != true {
+		t.Fatal("tun 应 auto_redirect=true(自动接管 fw4 防火墙)")
+	}
+	if tun["strict_route"] != false {
+		t.Fatal("tun 应 strict_route=false(盒子已有 fw4 路由策略,避免 ip rule 冲突)")
+	}
+	if _, ok := tun["platform"]; ok {
+		t.Fatalf("盒子无 GUI,不应有 platform 段: %v", tun["platform"])
+	}
+	// 双栈地址防 IPv6 直连泄漏
+	addr, _ := tun["address"].([]any)
+	wantAddr := []string{"172.18.0.1/30", "fdfe:dcba:9876::1/126"}
+	if len(addr) != 2 {
+		t.Fatalf("tun address = %v, want 双栈", tun["address"])
+	}
+	for i, w := range wantAddr {
+		if addr[i] != w {
+			t.Fatalf("tun address[%d] = %v, want %s", i, addr[i], w)
+		}
+	}
+	// 出站接口自动检测(防 TUN 环路)在 route 内
+	if got := walk(m, "route", "auto_detect_interface"); got != true {
+		t.Fatalf("route.auto_detect_interface = %v, want true", got)
+	}
+	// cache_file 显式落盘(OpenWrt /etc 非 tmpfs,重启不丢规则集缓存)
+	if got := walk(m, "experimental", "cache_file", "path"); got != "/etc/sing-box/cache.db" {
+		t.Fatalf("cache_file.path = %v, want /etc/sing-box/cache.db", got)
+	}
+	// 规则集下载用 legacy 形态(官方源 1.12/1.13 DisallowUnknownFields,
+	// 桌面 v14 的 http_clients/default_http_client 对它们直接 FATAL):
+	// 顶层无 http_clients、route 无 default_http_client
+	if _, ok := m["http_clients"]; ok {
+		t.Fatal("OpenWrt legacy 形态不应有顶层 http_clients(1.12/1.13 解析 FATAL)")
+	}
+	routeMap, _ := m["route"].(map[string]any)
+	if _, ok := routeMap["default_http_client"]; ok {
+		t.Fatal("OpenWrt legacy 形态不应有 route.default_http_client")
+	}
+	// 下载 detour 由每个 rule_set 的 download_detour=proxy 承担(替代
+	// http_clients;1.12 起支持,分流语义与桌面 v14 一致)
+	rs, _ := routeMap["rule_set"].([]any)
+	if len(rs) != 4 {
+		t.Fatalf("rule_set 数量 = %d, want 4", len(rs))
+	}
+	for i := range rs {
+		if walk(rs[i], "download_detour") != "proxy" {
+			t.Fatalf("rule_set[%d].download_detour = %v, want proxy", i, walk(rs[i], "download_detour"))
+		}
+	}
+	// 与通用版对照:outbounds 完全一致(仅 inbounds/route/cache 不同)
+	plain, err := RenderSingBox(nodes)
+	if err != nil {
+		t.Fatalf("通用版渲染失败: %v", err)
+	}
+	if !reflect.DeepEqual(m["outbounds"], parseJSONMap(t, plain)["outbounds"]) {
+		t.Fatal("OpenWrt 版与通用版 outbounds 不一致")
+	}
+}
+
 // TestRenderSingBox_H2受信 受信证书节点渲染 server_name 且 insecure=false。
 func TestRenderSingBox_H2受信(t *testing.T) {
 	nodes := fixtureNodes()
@@ -459,99 +551,29 @@ func walk(m any, path ...string) any {
 	return cur
 }
 
-// ===== RenderClash =====
-
-// TestRenderClash_结构 断言节点块/组/规则与凭据一致。
-func TestRenderClash_结构(t *testing.T) {
-	nodes := fixtureNodes()
-	data, err := RenderClash(nodes)
-	if err != nil {
-		t.Fatalf("渲染失败: %v", err)
-	}
-	out := string(data)
-	// 节点块数量(只统计 proxies 段,排除 proxy-groups 的两个组)
-	pStart, pEnd := strings.Index(out, "proxies:"), strings.Index(out, "proxy-groups:")
-	seg := out[pStart:pEnd]
-	if got := strings.Count(seg, "  - name:"); got != 2 {
-		t.Fatalf("proxy 块数 = %d, want 2", got)
-	}
-	for _, want := range []string{
-		"type: vless", "uuid: \"8a2f3dfa-ddf3-471a-ab3a-d4110d631d92\"",
-		"flow: xtls-rprx-vision", "servername: \"www.apple.com\"",
-		"client-fingerprint: chrome", "reality-opts:",
-		"public-key: \"zRAPkZIJ-p7lWdzOi4i4O8JUas5vvd3TzMmYUQm1i2w\"",
-		"short-id: \"cafe2554decd2a45\"",
-		"type: hysteria2", "skip-cert-verify: true",
-		"name: PROXY", "name: AUTO", "type: url-test",
-		"GEOSITE,cn,DIRECT", "GEOIP,CN,DIRECT", "MATCH,PROXY",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("clash.yaml 缺关键内容 %q\n%s", want, out)
-		}
-	}
-	// 规则顺序(site 先于 ip 先于兜底)
-	si, gi, mi := strings.Index(out, "GEOSITE,cn,DIRECT"),
-		strings.Index(out, "GEOIP,CN,DIRECT"), strings.Index(out, "MATCH,PROXY")
-	if !(si >= 0 && si < gi && gi < mi) {
-		t.Fatal("规则顺序错误:应 GEOSITE → GEOIP → MATCH")
-	}
-}
-
-// TestRenderClash_H2受信与混淆 受信证书渲染 sni、混淆渲染 obfs。
-func TestRenderClash_H2受信与混淆(t *testing.T) {
-	nodes := fixtureNodes()
-	nodes[1].Insecure = false
-	nodes[1].ServerName = "vpn.example.com"
-	nodes[1].Obfs = "obfs-secret"
-	data, err := RenderClash(nodes)
-	if err != nil {
-		t.Fatalf("渲染失败: %v", err)
-	}
-	out := string(data)
-	for _, want := range []string{"sni: \"vpn.example.com\"", "obfs: salamander", "obfs-password: \"obfs-secret\""} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("缺 %q\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "skip-cert-verify: true") {
-		t.Fatal("受信证书不应 skip-cert-verify")
-	}
-}
-
-// TestRenderClash_未知类型 未知节点类型报错。
-func TestRenderClash_未知类型(t *testing.T) {
-	nodes := fixtureNodes()
-	nodes[1].Type = conf.NodeType("trojan")
-	_, err := RenderClash(nodes)
-	if err == nil || !strings.Contains(err.Error(), "trojan") {
-		t.Fatalf("期望未知类型错误,实际: %v", err)
-	}
-}
-
-// TestCrossArtifact_一致性 三产物(links/sing-box/clash)凭据互查。
+// TestCrossArtifact_一致性 两产物(links/sing-box.json)凭据互查。
 // 黄金断言:同一节点的 uuid/密码在全部产物中一致(防凭据漂移)。
 func TestCrossArtifact_一致性(t *testing.T) {
 	nodes := fixtureNodes()
 	links, _ := RenderLinks(nodes)
 	sb, _ := RenderSingBox(nodes)
-	clash, _ := RenderClash(nodes)
-	// vless uuid 必须同时出现在三个产物
+	// vless uuid 必须同时出现在两个产物
 	uuid := nodes[0].UUID
-	for name, content := range map[string]string{"links": links, "sing-box.json": string(sb), "clash.yaml": string(clash)} {
+	for name, content := range map[string]string{"links": links, "sing-box.json": string(sb)} {
 		if !strings.Contains(content, uuid) {
 			t.Fatalf("%s 缺 vless uuid(漂移)", name)
 		}
 	}
-	// h2 密码必须同时出现在三个产物
+	// h2 密码必须同时出现在两个产物
 	h2Pass := nodes[1].Password
-	for name, content := range map[string]string{"links": links, "sing-box.json": string(sb), "clash.yaml": string(clash)} {
+	for name, content := range map[string]string{"links": links, "sing-box.json": string(sb)} {
 		if !strings.Contains(content, h2Pass) {
 			t.Fatalf("%s 缺 h2 密码(漂移)", name)
 		}
 	}
-	// clash.yaml 与服务端对应:短 id 一致
-	if !strings.Contains(string(clash), nodes[0].ShortID) {
-		t.Fatal("clash.yaml 缺 short-id(漂移)")
+	// sing-box.json 与服务端对应:短 id 一致
+	if !strings.Contains(string(sb), nodes[0].ShortID) {
+		t.Fatal("sing-box.json 缺 short-id(漂移)")
 	}
 }
 
@@ -577,8 +599,8 @@ func TestShareLink_h2密码特殊字符(t *testing.T) {
 }
 
 // TestCrossArtifact_特殊字符注入 含引号/反斜杠的 Name 与 Password 跨产物
-// 渲染安全(黄金注入测试):sing-box JSON 合法且值还原、clash 文本为 JSON
-// 转义形态、链接 fragment 经 PathEscape 可解析还原。
+// 渲染安全(黄金注入测试):sing-box JSON 合法且值还原、链接 fragment 经
+// PathEscape 可解析还原。
 func TestCrossArtifact_特殊字符注入(t *testing.T) {
 	nodes := fixtureNodes()
 	nodes[0].Name = `hk"x`      // 引号进 tag/name/fragment(PathEscape)
@@ -599,16 +621,6 @@ func TestCrossArtifact_特殊字符注入(t *testing.T) {
 	if got := walk(m, "outbounds", "2", "password"); got != nodes[1].Password {
 		t.Fatalf("h2 password = %v, want %q", got, nodes[1].Password)
 	}
-	clash, err := RenderClash(nodes)
-	if err != nil {
-		t.Fatalf("RenderClash: %v", err)
-	}
-	// clash.yaml:特殊字符须以 JSON 转义形态出现(与 YAML 双引号串转义集相同)
-	for _, want := range []string{`name: "hk\"x"`, `password: "p\"a\\b"`} {
-		if !strings.Contains(string(clash), want) {
-			t.Fatalf("clash.yaml 缺转义形态 %q\n%s", want, clash)
-		}
-	}
 	// Name 经 url.PathEscape 进 fragment,解析后应还原原名(含引号)
 	u, err := url.Parse(strings.SplitN(links, "\n", 2)[0])
 	if err != nil {
@@ -621,31 +633,7 @@ func TestCrossArtifact_特殊字符注入(t *testing.T) {
 
 // ===== 字段缺失防御(渲染器校验) =====
 
-// TestRenderClash_字段缺失 凭据缺失时报错而非产出残缺配置(表驱动分例)。
-func TestRenderClash_字段缺失(t *testing.T) {
-	cases := []struct {
-		name string
-		idx  int
-		mut  func(*conf.Node)
-	}{
-		{"vless 缺 UUID", 0, func(n *conf.Node) { n.UUID = "" }},
-		{"vless 缺 PublicKey", 0, func(n *conf.Node) { n.PublicKey = "" }},
-		{"vless 缺 ShortID", 0, func(n *conf.Node) { n.ShortID = "" }},
-		{"h2 缺 Password", 1, func(n *conf.Node) { n.Password = "" }},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			nodes := fixtureNodes()
-			tc.mut(&nodes[tc.idx])
-			_, err := RenderClash(nodes)
-			if err == nil || !strings.Contains(err.Error(), "字段缺失") {
-				t.Fatalf("期望错误含 \"字段缺失\",实际: %v", err)
-			}
-		})
-	}
-}
-
-// TestRenderSingBox_字段缺失 sing-box 渲染同口径防御(singBoxOutbound 校验)。
+// TestRenderSingBox_字段缺失 渲染器对凭据缺失做防御(singBoxOutbound 校验)。
 func TestRenderSingBox_字段缺失(t *testing.T) {
 	cases := []struct {
 		name string

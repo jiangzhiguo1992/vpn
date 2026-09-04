@@ -23,7 +23,7 @@ import (
 // RealityKeys 是 Reality x25519 密钥对。
 type RealityKeys struct {
 	PrivateKey string // 服务端用(配置 vless.private_key)
-	PublicKey  string // 客户端用(生成 vless:// 链接与 clash/sing-box 配置)
+	PublicKey  string // 客户端用(生成 vless:// 链接与 sing-box 配置)
 }
 
 // GenerateRealityKeys 生成 Reality x25519 密钥对。

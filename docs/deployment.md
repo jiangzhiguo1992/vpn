@@ -150,7 +150,7 @@ ssh 用户名@服务器IP "docker compose -f /opt/sing-box/docker-compose.yml lo
 # 应看到与清单通道对应的 inbound started:vless-in / hy2-in(每通道一行)
 ```
 
-客户端导入与实测见 [clients/](clients/) 下对应客户端文档(sing-box / Hiddify / Clash Verge Rev / mihomo)。
+客户端导入与实测见 [clients/](clients/) 下对应客户端文档(sing-box / Hiddify)。
 
 ---
 
@@ -209,7 +209,7 @@ www.suffolk.edu
 
 1. 编辑 `servers.json` 的 `vless.server_name` 为验证过的新域名
 2. `make gen && make deploy`(服务端与客户端产物同源同步更新,凭据不变,已分发凭据不失效)
-3. 重新导入客户端产物(links/clash.yaml/sing-box.json 均含新 server_name,旧配置需替换)
+3. 重新导入客户端产物(links/sing-box.json 均含新 server_name,旧配置需替换)
 
 ## 端口冲突与自定义
 

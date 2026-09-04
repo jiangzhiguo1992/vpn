@@ -3,7 +3,8 @@
 // 设计决策:
 //   - 输出形态 = 全节点完整配置:direct + 各节点 outbound + auto(urltest
 //     自动选择)+ proxy(selector 手动选择,默认首节点),route.final=proxy
-//   - 产物矩阵(1 通用版 + 3 桌面 tun 版,共 4 份 sing-box 产物):
+//   - 产物矩阵(1 通用版 + 3 桌面 tun 版 + 1 OpenWrt 网关盒子版,共 5 份
+//     sing-box 产物):
 //   - sing-box.json(通用):无 TUN,CLI/服务器/移动端(SFI/SFA 自带 TUN
 //     开关)导入即用
 //   - sing-box-sfm.json(SFM/macOS 桌面 GUI 全接管):inbounds 追加 tun
@@ -23,15 +24,26 @@
 //     Linux GUI 的 platform.http_proxy 可用性未经实测,未配置。注:
 //     sfl 未经对应平台完整真机验证,参数依据官方文档
 //     (sing-box.sagernet.org/clients/desktop)
+//   - sing-box-openwrt.json(OpenWrt 网关盒子,裸 sing-box 全接管):
+//     inbounds 仅 tun(双栈),auto_redirect 让 sing-box 自动接管 fw4
+//     防火墙、strict_route=false 与既有路由策略共存;配合 cmd/vpn 的
+//     vpn openwrt 一键部署(官方源 ipk + sing-box check 校验 + dnsmasq
+//     DNS 让位)。未经 OpenWrt 真机验证(2026-09),清单见 docs/openwrt.md
 //   - 分流形态 = 全局代理 + 国内直连分流 + 广告拦截(默认内置):dns/route
 //     引用官方 remote rule-set(geosite-geolocation-cn / geosite-geolocation-!cn /
 //     geoip-cn / geosite-category-ads-all,raw.githubusercontent 直链),国内
 //     域名走直连 DNS、国内站点直连、广告域名直接 reject、其余走代理。
-//     规则集经 http_clients(detour 指向 proxy)下载,
-//     经代理隧道获取海外源更稳,并由 experimental.cache_file 落盘缓存
-//     (缺缓存每次启动重新下载;首启下载失败会 FATAL,代理隧道可用时
-//     下载通常可达——代理出口在海外)。注:http_clients 显式下载出站是
-//     1.14+ 写法(隐式默认出站下载 1.14 弃用、1.16 移除),规避迁移窗口
+//     规则集下载出站双形态由模板 RULE_DL_MODE(v14/legacy)切换:
+//     v14 形态(桌面/通用版,1.14+)顶层 http_clients + route.
+//     default_http_client(detour 指向 proxy);legacy 形态(OpenWrt 版,
+//     官方源 1.12/1.13——sing-box 配置 DisallowUnknownFields,官方源解析
+//     不了 v14 形态直接 FATAL)无此二者、rule_set 每项 download_detour=
+//     proxy 代替。下载经代理隧道(海外源更稳)后由 experimental.
+//     cache_file 落盘缓存(缺缓存每次启动重新下载;首启下载失败会
+//     FATAL,代理隧道可用时下载通常可达——代理出口在海外)。版本演进:
+//     http_clients 是 1.14 默认出站下载弃用后的显式写法;download_detour
+//     1.12 起支持、1.14 弃用但可用、计划 1.16 移除,届时官方源已跟上,
+//     OpenWrt 整体切回 v14 形态(分流语义不变,下载出站始终走 proxy)
 //   - dns 段带国内 UDP 直连与国外 DoH(经 proxy detour)双服务器:
 //     final 走 DoH 防泄漏,域名解析与连接同出口
 //   - route.default_domain_resolver=dns-direct 满足 sing-box 对出站域名
@@ -49,36 +61,6 @@ import (
 
 	"vpn/internal/conf"
 )
-
-// renderSingBox 渲染 sing-box 官方客户端完整配置(JSON 字节),inbounds
-// 片段由调用方注入(mixed 纯内核版或 mixed+tun 全接管版)。
-//
-// 调用说明:nodes 非空(至少一个节点,调用方保证)。返回:缩进 JSON
-// 字节;任一节点渲染失败时返回错误。
-func renderSingBox(nodes []conf.Node, inbounds string) ([]byte, error) {
-	frags := make([]string, 0, len(nodes))
-	names := make([]string, 0, len(nodes))
-	for i := range nodes {
-		n := &nodes[i]
-		frag, err := singBoxOutbound(n)
-		if err != nil {
-			return nil, fmt.Errorf("client.renderSingBox: 节点 %q: %w", n.Name, err)
-		}
-		frags = append(frags, frag)
-		names = append(names, n.Name)
-	}
-	groupNames := make([]string, len(names))
-	for i, n := range names {
-		groupNames[i] = jq(n)
-	}
-	vals := map[string]string{
-		"INBOUNDS":     inbounds,
-		"OUTBOUNDS":    strings.Join(frags, ",\n"),
-		"NODE_NAMES":   strings.Join(groupNames, ", "),
-		"DEFAULT_NODE": jq(names[0]),
-	}
-	return renderJSON(singBoxTemplate, vals)
-}
 
 // RenderSingBox 渲染通用版客户端完整配置(无 TUN):CLI 跑、服务器网关、
 // 移动端官方 app(SFI/SFA 自带 TUN 开关)等场景导入即用,不要求特权。
@@ -130,6 +112,96 @@ func RenderSingBoxSFW(nodes []conf.Node) ([]byte, error) {
 // 注:按官方推荐生成,未经 Linux 真机实测。
 func RenderSingBoxSFL(nodes []conf.Node) ([]byte, error) {
 	return renderSingBox(nodes, singBoxInboundsMixed+",\n"+singBoxInboundTunLinux)
+}
+
+// RenderSingBoxOpenWrt 渲染 OpenWrt 网关盒子专用版(裸 sing-box,TUN 全接管)。
+//
+// 用途:OpenWrt 官方源 sing-box(procd init + UCI 配置,config 'main' 含
+// enabled/user 开关)部署到网关盒子后,以 root 运行并把局域网全部流量经
+// TUN 接管。盒子是网关不是终端,形态与桌面变体(见 singBoxInboundTunOpenWrt
+// 注释)不同:
+//   - inbounds 仅 tun:无 mixed(网关侧无本地 127.0.0.1 代理消费方,不开
+//     监听端口减攻击面)、无 platform.http_proxy(盒子无 GUI,该段无用)
+//   - route 追加 auto_detect_interface=TUN 出站接口自动检测,防环路
+//   - cache_file 显式落盘 /etc/sing-box/cache.db(/etc 非 tmpfs,重启后
+//     规则集缓存仍在,免每次启动重新下载)
+//   - 规则集下载用 legacy 形态(legacyRuleDL=true):无顶层 http_clients 与
+//     route.default_http_client,rule_set 每项加 download_detour="proxy"。
+//     原因:OpenWrt 官方源当前是 sing-box 1.12/1.13,配置解析
+//     DisallowUnknownFields——桌面 v14 形态(http_clients/
+//     default_http_client)对它们直接 FATAL parse error;download_detour
+//     1.12 起支持、1.14 起弃用(deprecated but functional,优先级低于
+//     http_clients)、计划 1.16 移除,届时官方源已跟上再整体切回 v14 形态
+//     (分流语义不变,下载出站始终走 proxy detour,与桌面一致)
+//
+// 其余 dns/outbounds/route 分流与通用版同源,经 renderSingBoxFull 注入。
+//
+// 注:参数依据 sing-box 官方 TUN 文档与 OpenWrt 社区实践,未经 OpenWrt
+// 真机验证(2026-09);真机验证清单见 docs/openwrt.md。
+func RenderSingBoxOpenWrt(nodes []conf.Node) ([]byte, error) {
+	return renderSingBoxFull(nodes, singBoxInboundTunOpenWrt,
+		`"auto_detect_interface": true,`,
+		",\n      \"path\": \"/etc/sing-box/cache.db\"", true)
+}
+
+// renderSingBox 渲染 sing-box 官方客户端完整配置(JSON 字节),inbounds
+// 片段由调用方注入(mixed 纯内核版或 mixed+tun 全接管版)。纯委托
+// renderSingBoxFull:route/cache 追加占位传空、legacyRuleDL=false(桌面/
+// 通用版用 v14 形态,产物与改造前逐字节一致)。
+//
+// 调用说明:nodes 非空(至少一个节点,调用方保证)。返回:缩进 JSON
+// 字节;任一节点渲染失败时返回错误。
+func renderSingBox(nodes []conf.Node, inbounds string) ([]byte, error) {
+	return renderSingBoxFull(nodes, inbounds, "", "", false)
+}
+
+// renderSingBoxFull 渲染 sing-box 官方客户端完整配置(JSON 字节),inbounds
+// 片段与 route/cache 追加字段均由调用方注入。routeExtra/cacheExtra 是
+// singBoxTemplate 占位(ROUTE_EXTRA/CACHE_EXTRA)的注入值,专供 OpenWrt
+// 网关盒子变体补 auto_detect_interface 与 cache 落盘路径;其它变体传
+// 空串(模板 if 条件不输出该行,产物与占位化改造前逐字节一致)。占位键
+// 在 vals 里恒有值,防止 renderJSON 因模板占位缺失报错。
+//
+// legacyRuleDL 选择规则集下载出站形态(写入 vals 的 RULE_DL_MODE,模板
+// 据其条件渲染):false → v14(顶层 http_clients + route.default_http_client,
+// 桌面/通用版,1.14+);true → legacy(无此二者,rule_set 每项加
+// download_detour=proxy,OpenWrt 版,兼容官方源 1.12/1.13)。OpenWrt 是
+// 唯一 legacy 调用方,两形态原因与演进见 RenderSingBoxOpenWrt。
+//
+// 调用说明:nodes 非空(至少一个节点,调用方保证)。返回:缩进 JSON
+// 字节;任一节点渲染失败或渲染结果非法时返回错误。
+func renderSingBoxFull(nodes []conf.Node, inbounds, routeExtra, cacheExtra string, legacyRuleDL bool) ([]byte, error) {
+	frags := make([]string, 0, len(nodes))
+	names := make([]string, 0, len(nodes))
+	for i := range nodes {
+		n := &nodes[i]
+		frag, err := singBoxOutbound(n)
+		if err != nil {
+			return nil, fmt.Errorf("client.renderSingBoxFull: 节点 %q: %w", n.Name, err)
+		}
+		frags = append(frags, frag)
+		names = append(names, n.Name)
+	}
+	groupNames := make([]string, len(names))
+	for i, n := range names {
+		groupNames[i] = jq(n)
+	}
+	// 规则集下载出站形态(v14/legacy)写进 vals 由模板条件切换,v14 分支
+	// 字面文本与仅桌面形态时代一致,桌面产物逐字节不变
+	ruleDLMode := "v14"
+	if legacyRuleDL {
+		ruleDLMode = "legacy"
+	}
+	vals := map[string]string{
+		"INBOUNDS":     inbounds,
+		"OUTBOUNDS":    strings.Join(frags, ",\n"),
+		"NODE_NAMES":   strings.Join(groupNames, ", "),
+		"DEFAULT_NODE": jq(names[0]),
+		"ROUTE_EXTRA":  routeExtra,
+		"CACHE_EXTRA":  cacheExtra,
+		"RULE_DL_MODE": ruleDLMode,
+	}
+	return renderJSON(singBoxTemplate, vals)
 }
 
 // singBoxInboundsMixed 是通用版 inbounds 片段(纯 mixed 本地入站)。
@@ -194,6 +266,30 @@ const singBoxInboundTun = `    {
           "server_port": 7890
         }
       }
+    }`
+
+// singBoxInboundTunOpenWrt 是 OpenWrt 网关盒子版唯一的入站(tun)片段,
+// 也是 sing-box-openwrt.json 与桌面变体的核心差异点。设计理由:
+//   - 盒子=网关:auto_redirect=true 是官方 Linux 推荐(auto_route 的现代
+//     替代),让 sing-box 启动时自动向 fw4 插入兼容的 nftables 重定向
+//     规则,免手写 OpenWrt 防火墙段落
+//   - strict_route=false:路由器本身已有 fw4 的路由/策略管理(auto_redirect
+//     语义已足够严格),避免 sing-box 再注入 ip rule 与既有路由策略冲突;
+//     与桌面端 strict_route=true 的"全权接管"定位不同
+//   - 双栈地址(IPv4 172.18.0.1/30 + IPv6 fdfe:dcba:9876::1/126):路由
+//     器侧同时拉起 IPv6 TUN,防客户端 IPv6 直连绕过代理泄漏(桌面单栈
+//     变体无此需求——宿主自己的 v6 走系统路由即可)
+//   - 无 mixed 入站、无 platform:盒子无本地代理消费方与 GUI(见
+//     RenderSingBoxOpenWrt);与 SFL 桌面变体(仅 auto_route+auto_redirect
+//     单栈)的差异即上述双栈/无 mixed/无 platform/cache 落盘
+const singBoxInboundTunOpenWrt = `    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": ["172.18.0.1/30", "fdfe:dcba:9876::1/126"],
+      "auto_route": true,
+      "auto_redirect": true,
+      "strict_route": false,
+      "stack": "system"
     }`
 
 // singBoxOutbound 渲染单节点 outbound 片段(JSON 对象文本,4 空格元素
@@ -282,7 +378,13 @@ func singBoxOutbound(n *conf.Node) (string, error) {
 
 // singBoxTemplate 是客户端完整配置骨架(节点 outbound 片段拼入
 // {{.OUTBOUNDS}},代理组引用 {{.NODE_NAMES}},入站片段拼入
-// {{.INBOUNDS}})。
+// {{.INBOUNDS}},route/cache 追加字段经 ROUTE_EXTRA/CACHE_EXTRA)。
+//
+// 规则集下载出站双形态由 RULE_DL_MODE(v14/legacy,见 renderSingBoxFull)
+// 条件切换,v14 分支字面文本与改造前单形态模板逐字节一致(桌面/通用版
+// 产物零影响):v14 → route 内 default_http_client + 顶层 http_clients;
+// legacy → 无此二者(1.12/1.13 官方源 DisallowUnknownFields 直接 FATAL),
+// rule_set 每项补 download_detour=proxy。
 const singBoxTemplate = `{
   "log": {
     "level": "info"
@@ -334,32 +436,37 @@ const singBoxTemplate = `{
     }
   ],
   "route": {
-    "default_domain_resolver": "dns-direct",
-    "default_http_client": "rule-set-download",
+    "default_domain_resolver": "dns-direct",{{if .ROUTE_EXTRA}}
+    {{.ROUTE_EXTRA}}{{end}}{{if eq .RULE_DL_MODE "v14"}}
+    "default_http_client": "rule-set-download",{{end}}
     "rule_set": [
       {
         "type": "remote",
         "tag": "geosite-geolocation-cn",
         "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-cn.srs"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-cn.srs"{{if eq .RULE_DL_MODE "legacy"}},
+        "download_detour": "proxy"{{end}}
       },
       {
         "type": "remote",
         "tag": "geosite-geolocation-!cn",
         "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs"{{if eq .RULE_DL_MODE "legacy"}},
+        "download_detour": "proxy"{{end}}
       },
       {
         "type": "remote",
         "tag": "geoip-cn",
         "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs"{{if eq .RULE_DL_MODE "legacy"}},
+        "download_detour": "proxy"{{end}}
       },
       {
         "type": "remote",
         "tag": "geosite-category-ads-all",
         "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs"{{if eq .RULE_DL_MODE "legacy"}},
+        "download_detour": "proxy"{{end}}
       }
     ],
     "rules": [
@@ -400,17 +507,17 @@ const singBoxTemplate = `{
       }
     ],
     "final": "proxy"
-  },
+  },{{if eq .RULE_DL_MODE "v14"}}
   "http_clients": [
     {
       "tag": "rule-set-download",
       "engine": "go",
       "detour": "proxy"
     }
-  ],
+  ],{{end}}
   "experimental": {
     "cache_file": {
-      "enabled": true
+      "enabled": true{{.CACHE_EXTRA}}
     }
   }
 }

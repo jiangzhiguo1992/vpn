@@ -45,7 +45,7 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 2. 导入配置文件:官方桌面客户端均为纯内核(不自动注入 TUN),按平台选用
    - macOS 用 `dist/sing-box-sfm.json`(TUN 全接管,仪表卡片开关);
    - Windows 用 `dist/sing-box-sfw.json`(连接即自动设系统代理,导入即用);
-   - Linux 用 `dist/sing-box-sfl.json`(未经 Linux 真机验证)
+   - Linux 用 `dist/sing-box-sfl.json`(⚠️未经 Linux 真机验证)
 3. 选中刚导入的配置并启用,节点在 `proxy` 组中手动选择,或切 `auto` 自动选优
 
 ### CLI(任意平台,含服务器/网关)

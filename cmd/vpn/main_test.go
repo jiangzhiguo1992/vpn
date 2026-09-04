@@ -77,8 +77,9 @@ func TestRunGen_端到端(t *testing.T) {
 	}
 	// 2. 产物齐全
 	wantFiles := []string{
-		"links.txt", "sub.txt", "clash.yaml", "sing-box.json",
+		"links.txt", "sub.txt", "sing-box.json",
 		"sing-box-sfm.json", "sing-box-sfw.json", "sing-box-sfl.json",
+		"sing-box-openwrt.json",
 		"servers/hk-01/config.json", "servers/hk-01/docker-compose.yml",
 		"servers/hk-01/deploy.sh", "servers/hk-01/cert.sh",
 		"servers/jp-01/config.json", "servers/jp-01/deploy.sh",
@@ -126,7 +127,7 @@ func TestRunGen_端到端(t *testing.T) {
 	}
 }
 
-// TestRunGen_客户端配置可解析 验证 sing-box.json/clash.yaml 关键结构。
+// TestRunGen_客户端配置可解析 验证 sing-box.json 关键结构。
 func TestRunGen_客户端配置可解析(t *testing.T) {
 	dir := t.TempDir()
 	invPath := filepath.Join(dir, "servers.json")
@@ -201,12 +202,22 @@ func TestRunGen_客户端配置可解析(t *testing.T) {
 			t.Fatalf("%s 与 sing-box.json 的 outbounds 不一致", name)
 		}
 	}
-	clash, _ := os.ReadFile(filepath.Join(outDir, "clash.yaml"))
-	out := string(clash)
-	for _, want := range []string{"jp-01-vless", "hk-01-vless", "hk-01-h2", "MATCH,PROXY"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("clash.yaml 缺 %q", want)
-		}
+	// OpenWrt 网关盒子版:合法 JSON、inbounds 恰 1 个且为 tun(无 mixed),
+	// outbounds 与通用版一致
+	ow, _ := os.ReadFile(filepath.Join(outDir, "sing-box-openwrt.json"))
+	var mo map[string]any
+	if err := json.Unmarshal(ow, &mo); err != nil {
+		t.Fatalf("sing-box-openwrt.json 不是合法 JSON: %v", err)
+	}
+	ov, _ := mo["inbounds"].([]any)
+	if len(ov) != 1 {
+		t.Fatalf("sing-box-openwrt.json inbounds 数量 = %d, want 1(仅 tun,盒子无 mixed)", len(ov))
+	}
+	if ot, _ := ov[0].(map[string]any); ot["type"] != "tun" {
+		t.Fatalf("sing-box-openwrt.json 缺 tun inbound: %v", ov[0])
+	}
+	if !reflect.DeepEqual(mo["outbounds"], m["outbounds"]) {
+		t.Fatal("sing-box-openwrt.json 与 sing-box.json 的 outbounds 不一致")
 	}
 }
 
@@ -257,11 +268,11 @@ func TestRunGen_产物权限(t *testing.T) {
 	}{
 		{"links.txt", 0o600},
 		{"sub.txt", 0o600},
-		{"clash.yaml", 0o600},
 		{"sing-box.json", 0o600},
 		{"sing-box-sfm.json", 0o600},
 		{"sing-box-sfw.json", 0o600},
 		{"sing-box-sfl.json", 0o600},
+		{"sing-box-openwrt.json", 0o600},
 		{"servers/hk-01/deploy.sh", 0o755},
 	}
 	for _, tc := range cases {
@@ -371,7 +382,7 @@ func TestUsage_输出(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读输出: %v", err)
 	}
-	for _, want := range []string{"vpn gen", "vpn deploy", "vpn doctor"} {
+	for _, want := range []string{"vpn gen", "vpn deploy", "vpn openwrt", "vpn doctor"} {
 		if !strings.Contains(string(out), want) {
 			t.Fatalf("usage 输出缺 %q:\n%s", want, out)
 		}

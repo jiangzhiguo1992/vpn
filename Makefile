@@ -4,7 +4,7 @@
 #   - cmd/vpn          CLI 入口(gen/deploy/doctor 子命令)
 #   - internal/conf    清单模型(校验/凭据回填/IO)
 #   - internal/server  服务端产物生成(sing-box 配置 + 编排/部署脚本)
-#   - internal/client  客户端产物生成(链接/订阅/clash/sing-box 配置)
+#   - internal/client  客户端产物生成(链接/订阅/sing-box 配置)
 #   - internal/deploy  远程部署执行(ssh/scp)
 #
 # 零第三方 Go 依赖:全部标准库,构建秒级,无构建标签负担。

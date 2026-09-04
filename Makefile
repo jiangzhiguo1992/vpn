@@ -22,7 +22,7 @@ doctor:
 # 首次执行:清单不存在时自动复制示例并提示编辑(exit 1,不生成产物)。
 # 幂等:再次 gen 复用清单已回填凭据,产物不变。
 gen:
-	@test -f "$(INVENTORY)" || (cp example-servers.json "$(INVENTORY)" && echo "已复制示例清单到 $(INVENTORY),请按 docs/deployment.md 编辑每台服务器的 address 后重新执行 make gen" && exit 1)
+	@test -f "$(INVENTORY)" || (cp example-servers.json "$(INVENTORY)" && echo "已复制示例清单到 $(INVENTORY),请按 docs/server.md 编辑每台服务器的 address 后重新执行 make gen" && exit 1)
 	go run ./cmd/vpn gen -inventory "$(INVENTORY)" -out "$(OUT)"
 
 # deploy 一条命令上传 + 远程部署全部服务器(依赖 gen 产物)。

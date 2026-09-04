@@ -17,7 +17,7 @@ make doctor
 
 # 2. 填写服务器清单(复制示例后编辑 address 等字段)
 cp example-servers.json servers.json
-#   字段说明见 docs/deployment.md 第 3 步
+#   字段说明见 docs/server.md 第 3 步
 
 # 3. 本地生成全部产物(自动回填密钥并写回清单,幂等)
 make gen
@@ -31,7 +31,7 @@ make deploy
 #    各客户端对接细节见 docs/clients/ 下对应文档
 ```
 
-完整部署指导(买服务器、SSH 密钥、云安全组等)见 [docs/deployment.md](docs/deployment.md)。
+完整部署指导(买服务器、SSH 密钥、云安全组等)见 [docs/server.md](docs/server.md)。
 
 ## 2 主流框架与方案对比
 
@@ -210,7 +210,7 @@ dist/
 
 | 文档 | 内容 |
 |---|---|
-| [docs/deployment.md](docs/deployment.md) | 部署从 0 到 1:环境准备、买服务器、SSH 密钥、清单填写、云安全组、生成/部署/验证、常见问题与排障 |
+| [docs/server.md](docs/server.md) | 部署从 0 到 1:环境准备、买服务器、SSH 密钥、清单填写、云安全组、生成/部署/验证、常见问题与排障 |
 | [docs/openwrt.md](docs/openwrt.md) | OpenWrt 网关盒子接入(裸 sing-box):一键部署、DNS 让位、升级、回滚、排障 |
 | [docs/clients/sing-box.md](docs/clients/sing-box.md) | sing-box 官方客户端(SFI/SFA/SFM/SFW/SFL)对接与分流规则 |
 | [docs/clients/hiddify.md](docs/clients/hiddify.md) | Hiddify(全平台)对接 |

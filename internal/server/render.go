@@ -35,7 +35,7 @@ import (
 	"vpn/internal/conf"
 )
 
-// ImageVersion 是 sing-box 官方镜像锁版本(与 docs/deployment.md 的版本
+// ImageVersion 是 sing-box 官方镜像锁版本(与 docs/server.md 的版本
 // 说明同源,升级时两处必须一致)。
 const ImageVersion = "v1.14.0"
 

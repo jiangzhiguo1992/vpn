@@ -83,7 +83,7 @@ func usage() {
   vpn openwrt -host <user@host> [-p <port>] [-out <dir>]   OpenWrt 网关盒子一键部署
   vpn doctor                                     环境自检(go/ssh/scp/openssl)
 
-清单与产物说明见 README.md 与 docs/deployment.md。
+清单与产物说明见 README.md 与 docs/server.md。
 `)
 }
 

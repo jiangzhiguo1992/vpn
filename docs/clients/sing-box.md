@@ -20,7 +20,10 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 
 ## 产物
 
-- `dist/sing-box.json`:完整配置(全节点 + mixed 本地入站 7890 + auto 自动选择组 + proxy 手动组)
+- `dist/sing-box.json`:通用版:无 TUN,CLI/移动端官方 app(SFI/SFA 自带 TUN 开关)导入即用
+- `dist/sing-box-sfm.json`:macOS SFM,含 `platform.http_proxy`,SFM 仪表出现"系统HTTP代理"卡片(GUI 开关,实测可用)
+- `dist/sing-box-sfw.json`:Windows SFW,含windows TUN 全接管
+- `dist/sing-box-sfl.json`: Linux SFL,含 `auto_redirect`(Linux 官方推荐,nftables,需 root;不支持时删该字段即可)
 - `dist/links.txt`:单节点分享链接(vless:// hysteria2://)
 
 ## 导入方式
@@ -39,12 +42,10 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 
 1. 从官方 GitHub Releases 下载对应平台的安装包(SFM 为 .pkg,SFW 为 .exe,
    SFL 为 .deb/.rpm)并安装
-2. 把 `dist/sing-box.json` 作为配置文件导入(客户端内"导入配置/从文件添加",
-   不同版本入口略异)
+2. 导入配置文件:官方桌面客户端均为纯内核(不自动注入 TUN),按平台选用
+   TUN 版产物——macOS 用 `dist/sing-box-sfm.json`,Windows 用
+   `dist/sing-box-sfw.json`,Linux 用 `dist/sing-box-sfl.json`
 3. 选中刚导入的配置并启用,节点在 `proxy` 组中手动选择,或切 `auto` 自动选优
-
-> 本仓库的 sing-box.json 不含 TUN 段;桌面官方客户端启用 TUN(全量接管)后同样可加载
-> 该配置,无需改动。
 
 ### CLI(任意平台,含服务器/网关)
 
@@ -175,8 +176,39 @@ sing-box run -c sing-box.json
 
 ## FAQ
 
-- **TUN 模式**:官方 app(移动端)自带 TUN 开关;桌面端视客户端版本是否自带,
-  需要 TUN 时按官方文档在配置中加 tun inbound(本仓库的 sing-box.json 不含 TUN,保持通用)。
+- **TUN 模式**:官方 app(移动端)自带 TUN 开关;桌面端(macOS SFM / Windows SFW /
+  Linux SFL)同为纯内核,需要配置含 tun inbound 才会接管系统流量(并让 SFM
+  仪表"系统HTTP代理"卡片可用)。
+  > 实测结论(SFM 1.14.0 standalone,macOS,2026-09):tun inbound 在 SFM 的
+  > NetworkExtension 环境可正常运行,但 **tun 地址必须避开本机局域网网段**——
+  > 撞网段时启动报 `bind: can't assign requested address`(如局域网为
+  > 172.19.0.0/19 时,默认示例地址 172.19.0.1 即撞车,换 172.18.0.1/30 即可)。
+  > SFM 桌面端直接用产物 **`dist/sing-box-sfm.json`**(mixed+tun,地址已取
+  > 172.18.0.1/30);若本机局域网恰为 172.18 段,把该地址改成其它未占用私有段
+  > 再导入。连接后仪表出现"系统HTTP代理"卡片,开关由 SFM 管理系统代理
+  > (实测可用,取代手动命令)。
+- **SFM 连上后浏览器仍上不了外网(SFM 不接管系统流量)**:原因是不含 tun inbound
+  的配置在 SFM 上只启动内核(mixed-in 监听 127.0.0.1:7890),系统流量仍直连。
+  两种解法:
+  ① 改用产物 `dist/sing-box-sfm.json`(推荐)——仪表出现"系统HTTP代理"卡片,
+     点开开关即由 SFM 接管流量,断开时自动还原;
+  ② 继续用 sing-box.json 时手动设置系统代理(网络服务名以
+     `networksetup -listallnetworkservices` 为准),SFM 断开后需手动关闭,
+     否则浏览器断网:
+  ```bash
+  networksetup -setsocksfirewallproxy Wi-Fi 127.0.0.1 7890
+  networksetup -setwebproxy Wi-Fi 127.0.0.1 7890
+  networksetup -setsecurewebproxy Wi-Fi 127.0.0.1 7890
+  # 关闭(不使用时必须关,否则 SFM 断开后浏览器断网)
+  networksetup -setsocksfirewallproxystatus Wi-Fi off
+  networksetup -setwebproxystatus Wi-Fi off
+  networksetup -setsecurewebproxystatus Wi-Fi off
+  ```
+  > macOS 实测:set*proxy 设置地址即同时启用系统代理(无需单独 status on,
+  > 开启命令三条即可);关闭必须用 status off。
+  > `"set_system_proxy": true` 只适用于 CLI/服务器等用户态场景(实测可用);
+  > SFM 内该字段会导致启动失败(exit status 7,NE 沙盒无 networksetup 权限,
+  > 参见 SagerNet/sing-box issue #3692),勿加。
 - **导入后无法连接**:确认服务器安全组放行(见 deployment.md 第 3 步);
   连接日志报 timeout 优先查端口放行,报 TLS/Reality 握手失败查伪装站点可达性。
 - **节点较多想分组**:移动端 app 内按节点名(hk-01-vless 等)分组即可。

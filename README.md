@@ -27,7 +27,7 @@ make deploy
 
 # 5. 客户端导入
 #    Clash Verge Rev 等 Clash 系  : 导入 dist/clash.yaml
-#    sing-box 官方(SFM/SFW/SFL/SFA/SFI)  : 导入 dist/sing-box.json
+#    sing-box 官方(SFM/SFW/SFL/SFA/SFI)  : 导入 dist/sing-box.json 或 dist/sing-box-*.json
 #    手机(任意支持链接的 app)     : 扫码/粘贴 dist/links.txt 里的链接
 #    各客户端对接细节见 docs/clients/ 下对应文档
 ```
@@ -42,7 +42,7 @@ make deploy
 
 | 内核 | 协议支持面 | 服务端部署形态 | 客户端生态 | 说明 |
 |---|---|---|---|---|
-| **sing-box**(本方案采用) | 全:VLESS/Reality、Hysteria2、SS、Trojan、VMess 等 | 官方镜像单容器,配置驱动 | sing-box 官方客户端/Hiddify 与其同源,Clash 系兼容其服务端 | 现代、跨平台支持最完善;协议/TLS/DNS 一体化 |
+| **sing-box**(本方案) | 全:VLESS/Reality、Hysteria2、SS、Trojan、VMess 等 | 官方镜像单容器,配置驱动 | sing-box 官方客户端/Hiddify 与其同源,Clash 系兼容其服务端 | 现代、跨平台支持最完善;协议/TLS/DNS 一体化 |
 | Xray-core | 全:VLESS/Reality 生态最成熟 + VMess/Trojan | 常配 3x-ui 等面板;可作库(需自行封装) | 客户端支持广 | 面板生态成熟,但服务端有状态,多用户/计量场景才需要 |
 | mihomo(Clash 系) | 客户端协议广;服务端 inbound 能力弱 | 定位客户端内核,不宜作服务端 | OpenClash 等客户端场景成熟 | 规则引擎最强,服务端不是其定位 |
 | Shadowsocks | 仅 SS 单协议 | 轻量单进程,部署最简单 | 客户端兼容最广(一切客户端都认 SS) | 单协议无逃生通道,流量特征明显、抗封锁弱 |
@@ -178,7 +178,10 @@ dist/
 ├── links.txt              全部节点分享链接(每行一个,剪贴板/扫码导入)
 ├── sub.txt                通用订阅(base64 全链接,机场标准格式)
 ├── clash.yaml             Clash 系订阅(节点组 + 国内直连分流规则)
-└── sing-box.json          sing-box 官方客户端完整配置
+├── sing-box.json          sing-box 官方客户端完整配置(通用版,CLI/移动端)
+├── sing-box-sfm.json      sing-box 官方桌面 SFM 版(macOS TUN 全接管 + 系统代理卡片)
+├── sing-box-sfw.json      sing-box 官方桌面 SFW 版(Windows TUN 全接管)
+└── sing-box-sfl.json      sing-box 官方桌面 SFL 版(Linux TUN 全接管,auto_redirect)
 ```
 
 ### 4.3 工程决策(怎么实现)

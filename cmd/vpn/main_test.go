@@ -146,6 +146,19 @@ func TestRunGen_客户端配置可解析(t *testing.T) {
 	if len(outbounds) != 6 {
 		t.Fatalf("outbounds 数量 = %d, want 6", len(outbounds))
 	}
+	// 内置国内直连分流(remote rule-set + 下载客户端)
+	route, _ := m["route"].(map[string]any)
+	rs, _ := route["rule_set"].([]any)
+	if len(rs) != 4 {
+		t.Fatalf("rule_set 数量 = %d, want 4(分流+广告)", len(rs))
+	}
+	if hc, _ := m["http_clients"].([]any); len(hc) != 1 {
+		t.Fatalf("http_clients 数量 = %d, want 1(规则集下载客户端)", len(hc))
+	}
+	exp, _ := m["experimental"].(map[string]any)
+	if exp == nil {
+		t.Fatal("缺 experimental(rule_set 缓存必需)")
+	}
 	// SFM 专用版:合法 JSON、含 tun inbound(auto_route + platform.http_proxy)
 	sfm, _ := os.ReadFile(filepath.Join(outDir, "sing-box-sfm.json"))
 	var ms map[string]any

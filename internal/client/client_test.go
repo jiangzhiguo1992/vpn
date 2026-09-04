@@ -192,7 +192,7 @@ func TestRenderSingBox_结构(t *testing.T) {
 		t.Fatalf("route.default_domain_resolver = %v", got)
 	}
 	// 内网直连规则在
-	if got := walk(m, "route", "rules", "2", "ip_is_private"); got != true {
+	if got := walk(m, "route", "rules", "3", "ip_is_private"); got != true {
 		t.Fatal("缺 ip_is_private 直连规则")
 	}
 	// 通用版 inbounds 锚点:仅 mixed,绝不能混入 tun(占位化注入防回归)
@@ -209,6 +209,64 @@ func TestRenderSingBox_结构(t *testing.T) {
 	}
 	if strings.Contains(string(data), `"type": "tun"`) {
 		t.Fatal("通用版不应含 tun inbound")
+	}
+	// 内置分流锚点:rule_set 三个官方 srs、dns/route 引用、下载客户端与缓存
+	rs, _ := m["route"].(map[string]any)["rule_set"].([]any)
+	if len(rs) != 4 {
+		t.Fatalf("rule_set 数量 = %d, want 4(cn/!cn/geoip/ads)", len(rs))
+	}
+	for i, want := range []string{"geosite-geolocation-cn", "geosite-geolocation-!cn", "geoip-cn", "geosite-category-ads-all"} {
+		if walk(rs[i], "tag") != want {
+			t.Fatalf("rule_set[%d].tag = %v, want %s", i, walk(rs[i], "tag"), want)
+		}
+	}
+	if got := walk(m, "route", "default_http_client"); got != "rule-set-download" {
+		t.Fatalf("route.default_http_client = %v", got)
+	}
+	hc, _ := m["http_clients"].([]any)
+	if len(hc) != 1 || walk(hc[0], "detour") != "proxy" {
+		t.Fatalf("http_clients 应含一个 detour=proxy 的下载客户端: %v", hc)
+	}
+	if got := walk(m, "dns", "rules", "0", "rule_set"); got != "geosite-geolocation-cn" {
+		t.Fatalf("dns.rules[0] 应让国内域名走 dns-direct: %v", got)
+	}
+	if got := walk(m, "experimental", "cache_file", "enabled"); got != true {
+		t.Fatal("experimental.cache_file 应启用(规则集缓存必需)")
+	}
+	// 广告拦截:reject 在分流放行之前(hijack-dns 后第一条)
+	if got := walk(m, "route", "rules", "2", "rule_set"); got != "geosite-category-ads-all" {
+		t.Fatalf("route.rules[2] 应为广告拦截: %v", got)
+	}
+	if got := walk(m, "route", "rules", "2", "action"); got != "reject" {
+		t.Fatalf("route.rules[2].action = %v, want reject", got)
+	}
+	// 路由:国内域名直连 + geoip-cn 兜底直连(行为语义层锚定)
+	if got := walk(m, "route", "rules", "4", "rule_set"); got != "geosite-geolocation-cn" {
+		t.Fatalf("route.rules[4] 应为国内站点直连: %v", got)
+	}
+	if got := walk(m, "route", "rules", "4", "action"); got != "route" {
+		t.Fatalf("route.rules[4].action = %v, want route", got)
+	}
+	if got := walk(m, "route", "rules", "4", "outbound"); got != "direct" {
+		t.Fatalf("route.rules[4] 应直连: outbound = %v", got)
+	}
+	if got := walk(m, "route", "rules", "5", "type"); got != "logical" {
+		t.Fatalf("route.rules[5] 应为 geoip 兜底 logical 规则: %v", got)
+	}
+	if got := walk(m, "route", "rules", "5", "rules", "0", "rule_set"); got != "geoip-cn" {
+		t.Fatalf("route.rules[5] 内层应含 geoip-cn: %v", got)
+	}
+	if got := walk(m, "route", "rules", "5", "rules", "1", "rule_set"); got != "geosite-geolocation-!cn" {
+		t.Fatalf("route.rules[5] 内层应含 geosite-geolocation-!cn: %v", got)
+	}
+	if got := walk(m, "route", "rules", "5", "rules", "1", "invert"); got != true {
+		t.Fatal("route.rules[5] 内层 !cn 应 invert")
+	}
+	if got := walk(m, "route", "rules", "5", "outbound"); got != "direct" {
+		t.Fatalf("route.rules[5] 兜底应直连: outbound = %v", got)
+	}
+	if got := walk(hc[0], "tag"); got != "rule-set-download" {
+		t.Fatalf("http_clients[0].tag = %v, want rule-set-download(与 default_http_client 互锚)", got)
 	}
 }
 

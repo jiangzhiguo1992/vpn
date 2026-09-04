@@ -18,9 +18,15 @@
 //     (纯内核,不自动注入 TUN),按官方推荐生成 tun 变体(Linux 追加
 //     auto_redirect);未经 Windows/Linux 真机实测,参数依据官方文档
 //     (sing-box.sagernet.org/clients/desktop)
-//   - 分流形态 = 全局代理 + 内网直连(ip_is_private),不依赖任何外置
-//     .srs/geo 规则文件,官方客户端(SFI/SFA/CLI)导入即用;需要国内
-//     直连分流的用户按 docs/clients/sing-box.md 追加规则
+//   - 分流形态 = 全局代理 + 国内直连分流 + 广告拦截(默认内置):dns/route
+//     引用官方 remote rule-set(geosite-geolocation-cn / geosite-geolocation-!cn /
+//     geoip-cn / geosite-category-ads-all,raw.githubusercontent 直链),国内
+//     域名走直连 DNS、国内站点直连、广告域名直接 reject、其余走代理。
+//     规则集经 http_clients(detour 指向 proxy)下载,
+//     经代理隧道获取海外源更稳,并由 experimental.cache_file 落盘缓存
+//     (缺缓存每次启动重新下载;首启下载失败会 FATAL,代理隧道可用时
+//     下载通常可达——代理出口在海外)。注:http_clients 显式下载出站是
+//     1.14+ 写法(隐式默认出站下载 1.14 弃用、1.16 移除),规避迁移窗口
 //   - dns 段带国内 UDP 直连与国外 DoH(经 proxy detour)双服务器:
 //     final 走 DoH 防泄漏,域名解析与连接同出口
 //   - route.default_domain_resolver=dns-direct 满足 sing-box 对出站域名
@@ -274,7 +280,13 @@ const singBoxTemplate = `{
       }
     ],
     "final": "dns-proxy",
-    "strategy": "ipv4_only"
+    "strategy": "ipv4_only",
+    "rules": [
+      {
+        "rule_set": "geosite-geolocation-cn",
+        "server": "dns-direct"
+      }
+    ]
   },
   "inbounds": [
 {{.INBOUNDS}}
@@ -299,6 +311,33 @@ const singBoxTemplate = `{
   ],
   "route": {
     "default_domain_resolver": "dns-direct",
+    "default_http_client": "rule-set-download",
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "geosite-geolocation-cn",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-cn.srs"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-geolocation-!cn",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs"
+      },
+      {
+        "type": "remote",
+        "tag": "geoip-cn",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-category-ads-all",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs"
+      }
+    ],
     "rules": [
       {
         "action": "sniff"
@@ -308,11 +347,47 @@ const singBoxTemplate = `{
         "action": "hijack-dns"
       },
       {
+        "rule_set": "geosite-category-ads-all",
+        "action": "reject"
+      },
+      {
         "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "rule_set": "geosite-geolocation-cn",
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "rule_set": "geoip-cn"
+          },
+          {
+            "rule_set": "geosite-geolocation-!cn",
+            "invert": true
+          }
+        ],
+        "action": "route",
         "outbound": "direct"
       }
     ],
     "final": "proxy"
+  },
+  "http_clients": [
+    {
+      "tag": "rule-set-download",
+      "engine": "go",
+      "detour": "proxy"
+    }
+  ],
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    }
   }
 }
 `

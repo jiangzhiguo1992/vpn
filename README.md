@@ -180,7 +180,7 @@ dist/
 ├── clash.yaml             Clash 系订阅(节点组 + 国内直连分流规则)
 ├── sing-box.json          sing-box 官方客户端完整配置(通用版,CLI/移动端)
 ├── sing-box-sfm.json      sing-box 官方桌面 SFM 版(macOS TUN 全接管 + 系统代理卡片)
-├── sing-box-sfw.json      sing-box 官方桌面 SFW 版(Windows TUN 全接管)
+├── sing-box-sfw.json      sing-box 官方桌面 SFW 版(Windows 连接即自动设系统代理)
 └── sing-box-sfl.json      sing-box 官方桌面 SFL 版(Linux TUN 全接管,auto_redirect)
 ```
 

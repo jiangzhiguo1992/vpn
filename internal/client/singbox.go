@@ -13,10 +13,15 @@
 //     172.18.0.1/30(/30 仅覆盖 4 个地址,与常见局域网撞网段概率低);
 //     撞网段启动报 "bind: can't assign requested address",按
 //     docs/clients/sing-box.md 更换未占用私有段
-//   - sing-box-sfw.json / sing-box-sfl.json(SFW/Windows、SFL/Linux
-//     桌面 GUI 全接管):Windows/Linux 官方桌面客户端与 SFM 同架构
-//     (纯内核,不自动注入 TUN),按官方推荐生成 tun 变体(Linux 追加
-//     auto_redirect);未经 Windows/Linux 真机实测,参数依据官方文档
+//   - sing-box-sfw.json(SFW/Windows 桌面客户端):tun 仅作 platform.http_proxy
+//     载体(auto_route=false)。Windows 实测(2026-09):tun 带 auto_route=true
+//     时 1.14 Windows WFP 形成环路("只有上传没有下载",system/gvisor 均复现,
+//     平台缺陷);auto_route=false + platform.http_proxy.enabled=true 时 SFW
+//     连接即在用户上下文执行 WinInet 自动设置系统代理,浏览器即用零手动
+//   - sing-box-sfl.json(SFL/Linux 桌面 GUI 全接管):同架构 tun 变体,
+//     按官方推荐追加 auto_redirect(nftables,需 root;不支持时删该行);
+//     Linux GUI 的 platform.http_proxy 可用性未经实测,未配置。注:
+//     sfl 未经对应平台完整真机验证,参数依据官方文档
 //     (sing-box.sagernet.org/clients/desktop)
 //   - 分流形态 = 全局代理 + 国内直连分流 + 广告拦截(默认内置):dns/route
 //     引用官方 remote rule-set(geosite-geolocation-cn / geosite-geolocation-!cn /
@@ -95,16 +100,24 @@ func RenderSingBoxSFM(nodes []conf.Node) ([]byte, error) {
 	return renderSingBox(nodes, singBoxInboundsMixed+",\n"+singBoxInboundTun)
 }
 
-// RenderSingBoxSFW 渲染 SFW 专用版(Windows 桌面 GUI 全接管):在通用版
-// inbounds 上追加 tun inbound。
+// RenderSingBoxSFW 渲染 SFW 专用版(Windows 桌面客户端):在通用版
+// inbounds 上追加 tun inbound(仅作 platform.http_proxy 载体)。
 //
-// 用途:Windows 官方桌面客户端(SFW,sing-box for Desktop)与 SFM 同架构
-// (纯内核,不自动注入 TUN);带 tun 后系统流量全接管(auto_route 经 WFP,
-// strict_route 防泄漏)。地址与 macOS 版同为 172.18.0.1/30(官方示例默认,
-// 撞本机局域网时报 bind 错,按文档更换)。注:按官方推荐生成,未经
-// Windows 真机实测。
+// Windows 真机实测结论(2026-09,SFW + sing-box 1.14):
+//   - tun 若带 auto_route=true:Windows 的 WFP 会把 sing-box 自身出站与
+//     全部流量导向 TUN 形成环路("只有上传没有下载",直连/代理/DNS 全断;
+//     stack system/gvisor 均复现,属 1.14 Windows 平台缺陷)
+//   - 因此 Windows 形态:tun 仅承载 platform.http_proxy(auto_route:
+//     false,不接管路由 → 无环),platform.http_proxy.enabled=true 让
+//     SFW 连接时在用户上下文执行 WinInet 自动设置系统代理
+//     (127.0.0.1:7890,实测生效)——走系统代理的应用(Chrome/Edge 等)
+//     即用,无需手动设置;与 macOS 的 Dashboard 卡片是不同触发路径
+//     (Windows 配置即生效)。覆盖边界:系统代理不影响自带代理设置或
+//     直连 socket 的应用(Firefox 默认不跟随系统代理)
+//
+// 地址 172.18.0.1/30 说明同 RenderSingBoxSFM。
 func RenderSingBoxSFW(nodes []conf.Node) ([]byte, error) {
-	return renderSingBox(nodes, singBoxInboundsMixed+",\n"+singBoxInboundTunBase)
+	return renderSingBox(nodes, singBoxInboundsMixed+",\n"+singBoxInboundTunWindows)
 }
 
 // RenderSingBoxSFL 渲染 SFL 专用版(Linux 桌面/服务 GUI 全接管):在通用版
@@ -127,21 +140,10 @@ const singBoxInboundsMixed = `    {
       "listen_port": 7890
     }`
 
-// singBoxInboundTunBase 是 Windows(SFW)版追加的 tun 入站片段:基础形态
-// (auto_route/strict_route/stack),无平台专属字段。地址 172.18.0.1/30
-// 为官方示例默认,撞本机局域网时报 bind 错,按文档更换(见 RenderSingBoxSFW)。
-const singBoxInboundTunBase = `    {
-      "type": "tun",
-      "tag": "tun-in",
-      "address": ["172.18.0.1/30"],
-      "auto_route": true,
-      "strict_route": true,
-      "stack": "system"
-    }`
-
 // singBoxInboundTunLinux 是 Linux(SFL)版追加的 tun 入站片段:基础形态 +
 // auto_redirect(Linux 专用,nftables,官方推荐;需 root/CAP_NET_ADMIN)。
-// 地址说明同 singBoxInboundTunBase(见 RenderSingBoxSFL)。
+// 地址说明同 singBoxInboundTun(见 RenderSingBoxSFL)。Linux GUI 的系统
+// 代理开关机制(platform.http_proxy 在 Linux 的可用性)未经实测,未配置。
 const singBoxInboundTunLinux = `    {
       "type": "tun",
       "tag": "tun-in",
@@ -152,10 +154,32 @@ const singBoxInboundTunLinux = `    {
       "stack": "system"
     }`
 
-// singBoxInboundTun 是 SFM 专用版追加的 tun 入站片段。platform.http_proxy
-// 让 SFM 仪表渲染"系统HTTP代理"卡片(server_port 与 mixed 入站一致);
-// stack "system" 实测 macOS GUI(NetworkExtension)可用;地址 172.18.0.1/30
-// 为官方示例默认,撞本机局域网时报 bind 错,按文档更换(见 RenderSingBoxSFM)。
+// singBoxInboundTunWindows 是 Windows(SFW)版追加的 tun 入站片段:
+// tun 仅作 platform.http_proxy 载体——auto_route/strict_route 必须
+// false(Windows 1.14 上 auto_route 会形成 TUN 环路,见 RenderSingBoxSFW),
+// platform.http_proxy.enabled=true 让 SFW 连接时自动设置系统代理(实测
+// 生效,浏览器即用)。地址说明同 singBoxInboundTun(见 RenderSingBoxSFW)。
+const singBoxInboundTunWindows = `    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": ["172.18.0.1/30"],
+      "auto_route": false,
+      "strict_route": false,
+      "stack": "system",
+      "platform": {
+        "http_proxy": {
+          "enabled": true,
+          "server": "127.0.0.1",
+          "server_port": 7890
+        }
+      }
+    }`
+
+// singBoxInboundTun 是 SFM(macOS 桌面 GUI)版追加的 tun 入站片段:
+// auto_route 全接管系统流量(macOS NE 下实测正常,无 Windows 的环路问题),
+// platform.http_proxy 让 SFM 仪表出现"系统HTTP代理"卡片(GUI 开关,
+// server_port 与 mixed 入站一致);stack "system" 实测 macOS GUI 可用。
+// 地址 172.18.0.1/30 为官方示例默认,撞本机局域网时报 bind 错,按文档更换。
 const singBoxInboundTun = `    {
       "type": "tun",
       "tag": "tun-in",

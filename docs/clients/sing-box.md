@@ -22,7 +22,7 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 
 - `dist/sing-box.json`:通用版:无 TUN,CLI/移动端官方 app(SFI/SFA 自带 TUN 开关)导入即用
 - `dist/sing-box-sfm.json`:macOS SFM,含 `platform.http_proxy`,SFM 仪表出现"系统HTTP代理"卡片(GUI 开关,实测可用)
-- `dist/sing-box-sfw.json`:Windows SFW,含windows TUN 全接管
+- `dist/sing-box-sfw.json`:Windows SFW,含 `platform.http_proxy`,SFW 连接时自动设置 Windows 系统代理,导入即用。
 - `dist/sing-box-sfl.json`: Linux SFL,含 `auto_redirect`(Linux 官方推荐,nftables,需 root;不支持时删该字段即可)
 - `dist/links.txt`:单节点分享链接(vless:// hysteria2://)
 
@@ -43,8 +43,9 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 1. 从官方 GitHub Releases 下载对应平台的安装包(SFM 为 .pkg,SFW 为 .exe,
    SFL 为 .deb/.rpm)并安装
 2. 导入配置文件:官方桌面客户端均为纯内核(不自动注入 TUN),按平台选用
-   TUN 版产物——macOS 用 `dist/sing-box-sfm.json`,Windows 用
-   `dist/sing-box-sfw.json`,Linux 用 `dist/sing-box-sfl.json`
+   - macOS 用 `dist/sing-box-sfm.json`(TUN 全接管,仪表卡片开关);
+   - Windows 用 `dist/sing-box-sfw.json`(连接即自动设系统代理,导入即用);
+   - Linux 用 `dist/sing-box-sfl.json`(未经 Linux 真机验证)
 3. 选中刚导入的配置并启用,节点在 `proxy` 组中手动选择,或切 `auto` 自动选优
 
 ### CLI(任意平台,含服务器/网关)

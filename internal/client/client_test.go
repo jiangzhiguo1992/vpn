@@ -320,9 +320,9 @@ func TestRenderSingBoxSFM_结构(t *testing.T) {
 }
 
 // checkTunVariant 桌面 tun 变体共享断言:inbounds=[mixed,tun]、tun 基础
-// 字段(auto_route/strict_route)、outbounds 与通用版一致;extra 校验平台
-// 特有字段(值可为标量或嵌套结构,DeepEqual 比较)。
-func checkTunVariant(t *testing.T, data, plain []byte, extra map[string]any) {
+// 字段(auto_route/strict_route,按平台形态传入)、outbounds 与通用版一致;
+// extra 校验平台特有字段(值可为标量或嵌套结构,DeepEqual 比较)。
+func checkTunVariant(t *testing.T, data, plain []byte, wantAutoRoute bool, extra map[string]any) {
 	t.Helper()
 	m := parseJSONMap(t, data)
 	inbounds, _ := m["inbounds"].([]any)
@@ -333,8 +333,9 @@ func checkTunVariant(t *testing.T, data, plain []byte, extra map[string]any) {
 	if tun["type"] != "tun" || tun["tag"] != "tun-in" {
 		t.Fatalf("inbounds[1] 应为 tun: %v", tun)
 	}
-	if tun["auto_route"] != true || tun["strict_route"] != true {
-		t.Fatal("tun 应 auto_route/strict_route=true(全接管)")
+	if tun["auto_route"] != wantAutoRoute || tun["strict_route"] != wantAutoRoute {
+		t.Fatalf("tun auto_route/strict_route = %v/%v, want %v(mac/Linux 全接管,Windows 载体形态)",
+			tun["auto_route"], tun["strict_route"], wantAutoRoute)
 	}
 	for k, v := range extra {
 		if !reflect.DeepEqual(tun[k], v) {
@@ -347,8 +348,8 @@ func checkTunVariant(t *testing.T, data, plain []byte, extra map[string]any) {
 	}
 }
 
-// TestRenderSingBoxSFW_结构 Windows 版:基础 tun,无 platform 段
-// (http_proxy 所在字段,Apple 平台专属;结构断言免疫用户数据误报)。
+// TestRenderSingBoxSFW_结构 Windows 版:与 macOS 版同构(带
+// platform.http_proxy——Windows 实测缺该段时 SFW 无系统代理能力)。
 func TestRenderSingBoxSFW_结构(t *testing.T) {
 	nodes := fixtureNodes()
 	data, err := RenderSingBoxSFW(nodes)
@@ -359,11 +360,24 @@ func TestRenderSingBoxSFW_结构(t *testing.T) {
 	if err != nil {
 		t.Fatalf("通用版渲染失败: %v", err)
 	}
-	checkTunVariant(t, data, plain, nil)
+	checkTunVariant(t, data, plain, false, nil)
+	// platform.http_proxy 必须存在(与 sfm 版同构;否则 SFW 无系统代理开关)
 	m := parseJSONMap(t, data)
 	tun := m["inbounds"].([]any)[1].(map[string]any)
-	if _, has := tun["platform"]; has {
-		t.Fatal("SFW 版不应含 platform(http_proxy 所在字段,Apple 平台专属)")
+	platform, _ := tun["platform"].(map[string]any)
+	hp, _ := platform["http_proxy"].(map[string]any)
+	if hp == nil || hp["enabled"] != true || hp["server"] != "127.0.0.1" {
+		t.Fatalf("SFW 版缺 platform.http_proxy(系统代理开关依赖): %v", tun["platform"])
+	}
+	hpPort, ok := hp["server_port"].(json.Number)
+	if !ok || hpPort.String() != "7890" {
+		t.Fatalf("SFW 版 http_proxy.server_port = %v, want 7890", hp["server_port"])
+	}
+	// 双端口对等:mixed listen_port 必须与 http_proxy.server_port 一致
+	// (mixed/sfm/sfw 三处常量各自硬编码 7890,防只改一处造成漂移)
+	mixedPort, ok2 := walk(m, "inbounds", "0", "listen_port").(json.Number)
+	if !ok2 || mixedPort.String() != hpPort.String() {
+		t.Fatalf("SFW mixed listen_port(%v) 与 http_proxy.server_port(%v) 不对等", mixedPort, hpPort)
 	}
 }
 
@@ -379,7 +393,7 @@ func TestRenderSingBoxSFL_结构(t *testing.T) {
 	if err != nil {
 		t.Fatalf("通用版渲染失败: %v", err)
 	}
-	checkTunVariant(t, data, plain, map[string]any{"auto_redirect": true})
+	checkTunVariant(t, data, plain, true, map[string]any{"auto_redirect": true})
 }
 
 // TestRenderSingBox_H2受信 受信证书节点渲染 server_name 且 insecure=false。

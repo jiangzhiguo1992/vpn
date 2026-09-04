@@ -46,21 +46,29 @@
 **旁路由验证要点**:设备把网关+DNS 指向盒子后,按第 9 节清单逐项验收;访问
 盒子/主路由管理页(LuCI)走局域网直连规则,不受接管影响。
 
-## 2 前置要求
+## 2 从 0 到 1 准备(一次性)
 
-- 盒子:OpenWrt 23.05+(fw4);24.10(opkg)或 25.x(apk)均可,部署脚本自动识别包管理器
-- 盒子已配 root 免密 SSH(部署走 BatchMode 非交互;首次连接自动接受指纹)
-- 盒子可访问官方软件源(首次部署自动安装内核)
-- 盒子 SSH 若为 dropbear(默认)且本机为 OpenSSH 9+:`scp` 默认走 SFTP 子系统,
-  报 `subsystem request failed` 时先在盒子执行 `opkg install openssh-sftp-server`
-  (部署失败提示里也有此指引)
-- 本机已 `make gen`(产物含 `dist/sing-box-openwrt.json`)
+盒子侧(OpenWrt 网关,部署前提):
+
+| 项 | 要求 | 检查/操作 |
+|---|---|---|
+| 系统 | OpenWrt 23.05+(fw4);24.10(opkg)或 25.x(apk)均可,脚本自动识别包管理器 | LuCI 系统页 |
+| 官方软件源 | 可访问(首次部署自动安装内核) | `opkg update` / `apk update` |
+| SSH 免密 | root 免密(部署走 BatchMode 非交互) | 下述命令配置后 `ssh -p 2222 root@192.168.1.1 "uname -a"` 能直接输出 |
+| SFTP 子系统 | 盒子 SSH 为 dropbear(默认)且本机 OpenSSH 9+:scp 默认走 SFTP,报 `subsystem request failed` 时先在盒子执行 `opkg install openssh-sftp-server` | 部署失败提示里也有此指引 |
+
+SSH 免密配置(未配置时,一次性):
+
+```bash
+ssh-keygen -t ed25519                    # 已有密钥可跳过
+ssh-copy-id -p 2222 root@192.168.1.1     # 输入一次盒子密码后即免密;SSH 端口 22 时可省 -p
+```
 
 ## 3 一键部署
 
 ```bash
-vpn openwrt -host root@192.168.1.1          # 常用形态
-vpn openwrt -host 192.168.1.1 -p 2222       # user 缺省 root,自定义端口
+make deploy-openwrt HOST=192.168.1.1                # 常用形态(SSH 端口 22)
+make deploy-openwrt HOST=用户名@局域网IP PORT=端口  # 自定义 user@IP + SSH 端口
 ```
 
 脚本在盒子上依次做(幂等,可重复执行):
@@ -183,7 +191,7 @@ uci set dhcp.@dnsmasq[0].port='<部署输出中的原值>' && uci commit dhcp
 - [ ] DNS 无泄漏:用 dnsleaktest.com 等查解析出口与访问一致
 - [ ] 盒子重启后 sing-box 自启(`logread | grep sing-box` 确认无手动干预)
 - [ ] 盒子有端口转发/DDNS 时:规则仍生效(auto_redirect 冲突项)
-- [ ] 重跑 `vpn openwrt` 幂等,配置刷新生效;部署输出无 FATAL 检出
+- [ ] 重跑 `make deploy-openwrt HOST=<盒子IP>` 幂等,配置刷新生效;部署输出无 FATAL 检出
 - [ ] (旁路由形态)设备网关与 DNS 均指向盒子后:被接管设备国内外正常;未指向
       盒子的设备(仍走主路由)不被代理——分流边界符合预期
 - [ ] (旁路由形态)DHCP 唯一:盒子与主路由不同时下发 DHCP(双网关冲突);

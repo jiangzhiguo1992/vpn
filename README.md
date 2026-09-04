@@ -114,7 +114,7 @@ iOS 无 Hiddify 条件时用区外商店的 sing-box(SFI)或 Shadowrocket 等第
 | 桌面三平台通用 | sing-box 官方(SFM/SFW/SFL)导入对应产物文件(或 Hiddify 扫链接) |
 | 手机快速上网 | Hiddify 扫 links.txt 的 vless 链接 |
 | iPhone 只有区外商店第三方 app | 装 sing-box(SFI)导入 sing-box.json,或第三方 app 用 h2 节点链接 |
-| 网关盒子(OpenWrt)整网代理 | `make gen` 后 `vpn openwrt -host root@<盒子IP>` 一键部署(见 docs/openwrt.md) |
+| 网关盒子(OpenWrt)整网代理 | `make gen` 后 `make deploy-openwrt HOST=<盒子IP>` 一键部署(见 docs/openwrt.md) |
 | 命令行/服务器环境 | sing-box CLI 跑 sing-box.json |
 
 ## 4 架构与设计
@@ -180,7 +180,7 @@ dist/
 ├── sing-box-sfm.json      sing-box 官方桌面 SFM 版(macOS TUN 全接管 + 系统代理卡片)
 ├── sing-box-sfw.json      sing-box 官方桌面 SFW 版(Windows 连接即自动设系统代理)
 ├── sing-box-sfl.json      sing-box 官方桌面 SFL 版(Linux TUN 全接管,auto_redirect)
-└── sing-box-openwrt.json  sing-box 官方 OpenWrt 版(网关盒子 TUN 全接管,配合 vpn openwrt 一键部署)
+└── sing-box-openwrt.json  sing-box 官方 OpenWrt 版(网关盒子 TUN 全接管,配合 make deploy-openwrt 一键部署)
 ```
 
 ### 4.3 工程决策(怎么实现)

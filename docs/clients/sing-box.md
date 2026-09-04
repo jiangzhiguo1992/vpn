@@ -8,7 +8,7 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 | 平台 | 官方客户端 | 获取渠道 |
 |---|---|---|
 | Android | SFA(sing-box for Android) | 官方 GitHub Releases(.apk)/Google Play |
-| iOS/iPadOS | SFI(sing-box for iOS) | ~~App Store(上架名 sing-box MT)~~/TestFlight |
+| iOS/iPadOS | SFI(sing-box for iOS) | TestFlight/编译:<https://github.com/SagerNet/sing-box-for-apple> |
 | macOS | SFM(sing-box for macOS) | 官方 GitHub Releases(.pkg,Apple/Intel/Universal) |
 | Windows | SFW(sing-box for Windows) | 官方 GitHub Releases(.exe) |
 | Linux | SFL(sing-box for Linux) | 官方 GitHub Releases(.deb/.rpm/.pkg.tar.zst) |

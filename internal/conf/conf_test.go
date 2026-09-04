@@ -18,10 +18,9 @@ import (
 // sampleServer 返回带固定字段的合法三通道服务器(测试基线)。
 func sampleServer() *Server {
 	return &Server{
-		Name:     "hk-01",
-		Location: "香港",
-		Address:  "hk.example.com",
-		SSH:      &SSHConfig{User: "root", Port: 22},
+		Name:    "hk-01",
+		Address: "hk.example.com",
+		SSH:     &SSHConfig{User: "root", Port: 22},
 		VLESS: &VLESSConfig{
 			ServerName: "www.apple.com",
 		},
@@ -270,9 +269,6 @@ func TestSaveLoad_往返(t *testing.T) {
 	if got.Servers[0].VLESS.UUID != inv.Servers[0].VLESS.UUID ||
 		got.Servers[0].Hysteria2.Password != inv.Servers[0].Hysteria2.Password {
 		t.Fatal("round-trip 凭据不一致")
-	}
-	if got.Servers[0].Location != "香港" {
-		t.Fatal("round-trip 中文 location 不一致")
 	}
 }
 

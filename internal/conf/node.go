@@ -41,7 +41,6 @@ func (t NodeType) ProtocolSuffix() string {
 // Node 是单节点(一台服务器的一个通道)的客户端侧视图。
 type Node struct {
 	Name       string   // 节点名:<服务器名>-<协议短名>(客户端显示名与 tag)
-	Location   string   // 位置/地区(客户端显示用,可空)
 	Type       NodeType // 协议类型
 	Address    string   // 服务器地址(域名或裸 IP,IPv6 不带括号,渲染时处理)
 	Port       uint16   // 实际端口(回填后)
@@ -65,7 +64,6 @@ func (s *Server) Nodes() []Node {
 		v := s.VLESS
 		out = append(out, Node{
 			Name:       s.Name + "-vless",
-			Location:   s.Location,
 			Type:       TypeVLESSReality,
 			Address:    s.Address,
 			Port:       v.ListenPort(),
@@ -79,7 +77,6 @@ func (s *Server) Nodes() []Node {
 		h := s.Hysteria2
 		out = append(out, Node{
 			Name:       s.Name + "-h2",
-			Location:   s.Location,
 			Type:       TypeHysteria2,
 			Address:    s.Address,
 			Port:       h.ListenPort(),

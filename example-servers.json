@@ -1,8 +1,7 @@
 {
   "servers": [
     {
-      "name": "hk-01",
-      "location": "香港",
+      "name": "hk_01.name",
       "address": "服务器IP/域名",
       "ssh": {
         "user": "root",

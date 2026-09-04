@@ -83,8 +83,7 @@ cp example-servers.json servers.json
 {
   "servers": [
     {
-      "name": "hk-01",
-      "location": "香港",
+      "name": "hk_01.name",
       "address": "服务器IP/域名",
       "ssh": { "user": "root", "port": 22 },
       "vless": { "port": 443, "server_name": "www.apple.com" },
@@ -99,12 +98,11 @@ cp example-servers.json servers.json
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `name` | ✅ | 服务器唯一标识(如 `hk-01`),同时是产物目录名与客户端节点名;仅允许字母/数字/`._-` |
-| `location` | ❌ | 显示用地区(如"香港"),透传到客户端节点列表 |
 | `address` | ✅ | 客户端连接地址:域名或裸 IP。**IP 直连最简单**(推荐个人场景);IPv6 直接填裸地址(如 `2001:db8::1`);**不要带端口**(`1.2.3.4:443` 会被拒绝) |
 | `ssh.user` | ❌ | 部署用户,默认 `root`(仅 deploy 用) |
 | `ssh.port` | ❌ | SSH 端口,默认 `22`(仅 deploy 用) |
 | `vless.port` | ❌ | VLESS 监听端口,默认 `443` |
-| `vless.server_name` | ⚠️ | 有 vless 时必填，伪装站点(Reality 握手目标),推荐 `www.apple.com`(实测可用) |
+| `vless.server_name` | ⚠️ | **有 vless 时必填**，伪装站点(Reality 握手目标),推荐 `www.apple.com`(实测可用) |
 | `hysteria2.port` | ❌ | H2 监听端口,默认 `8443`(仅 UDP) |
 | `hysteria2.server_name` | ❌ | 证书域名,默认不填(=IP+自签证书,客户端跳过校验);仅当你用受信证书(如 Let's Encrypt)时才填证书域名 |
 | `hysteria2.obfs_password` | ❌ | salamander 混淆密码,不填=不启用混淆 |

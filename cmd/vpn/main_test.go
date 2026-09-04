@@ -23,7 +23,6 @@ func writeSmokeInventory(t *testing.T, path string) {
   "servers": [
     {
       "name": "hk-01",
-      "location": "香港",
       "address": "hk.example.com",
       "ssh": {"user": "root", "port": 22},
       "vless": {"port": 443, "server_name": "www.apple.com"},

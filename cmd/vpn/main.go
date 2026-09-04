@@ -206,7 +206,7 @@ func printSummary(outDir string, inv *conf.Inventory) {
 	sb.WriteString("  clash.yaml     Clash 系客户端(Clash Verge Rev/mihomo/OpenClash)\n")
 	sb.WriteString("  sing-box.json      sing-box 官方客户端通用版(SFI/SFA/CLI)\n")
 	sb.WriteString("  sing-box-sfm.json  sing-box 官方桌面 SFM 版(macOS TUN 全接管)\n")
-	sb.WriteString("  sing-box-sfw.json  sing-box 官方桌面 SFW 版(Windows TUN 全接管)\n")
+	sb.WriteString("  sing-box-sfw.json  sing-box 官方桌面 SFW 版(Windows 连接自动设系统代理)\n")
 	sb.WriteString("  sing-box-sfl.json  sing-box 官方桌面 SFL 版(Linux TUN 全接管)\n")
 	fmt.Print(sb.String())
 }

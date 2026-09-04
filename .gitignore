@@ -29,6 +29,7 @@ go.work.sum
 
 # IDE
 .idea/
+.cortexkit/
 
 # 生成产物(服务端/客户端配置,含凭据,不入库)
 /dist/

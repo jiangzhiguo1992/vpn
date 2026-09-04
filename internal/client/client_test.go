@@ -18,7 +18,7 @@ import (
 // fixtureNodes 返回三通道节点基线(vless/ss/h2 自签)。
 func fixtureNodes() []conf.Node {
 	return []conf.Node{
-		{Name: "hk-01-vless", Location: "香港", Type: conf.TypeVLESSReality,
+		{Name: "hk-01-vless", Type: conf.TypeVLESSReality,
 			Address: "hk.example.com", Port: 443, UUID: "8a2f3dfa-ddf3-471a-ab3a-d4110d631d92",
 			ServerName: "www.apple.com", PublicKey: "zRAPkZIJ-p7lWdzOi4i4O8JUas5vvd3TzMmYUQm1i2w",
 			ShortID: "cafe2554decd2a45"},

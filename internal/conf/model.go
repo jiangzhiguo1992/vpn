@@ -38,7 +38,6 @@ type Inventory struct {
 // Server 是单台服务器的全部信息(身份 + 双通道)。
 type Server struct {
 	Name      string       `json:"name"`                // 服务器唯一标识,产物目录名与客户端节点名前缀
-	Location  string       `json:"location,omitempty"`  // 位置/地区(如"香港"),透传到客户端节点显示名
 	Address   string       `json:"address"`             // 客户端连接地址:域名或裸 IP(IPv6 直接填)
 	SSH       *SSHConfig   `json:"ssh,omitempty"`       // SSH 部署参数(仅 deploy 用)
 	VLESS     *VLESSConfig `json:"vless,omitempty"`     // VLESS+Reality 通道(可选)

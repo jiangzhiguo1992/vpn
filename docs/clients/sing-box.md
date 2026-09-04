@@ -8,15 +8,12 @@ sing-box 官方客户端与服务器同内核,协议支持最全(Reality 与 Hys
 | 平台 | 官方客户端 | 获取渠道 |
 |---|---|---|
 | Android | SFA(sing-box for Android) | 官方 GitHub Releases(.apk)/Google Play |
-| iOS/iPadOS | SFI(sing-box for iOS) | App Store(上架名 sing-box MT)/TestFlight |
+| iOS/iPadOS | SFI(sing-box for iOS) | ~~App Store(上架名 sing-box MT)~~/TestFlight |
 | macOS | SFM(sing-box for macOS) | 官方 GitHub Releases(.pkg,Apple/Intel/Universal) |
 | Windows | SFW(sing-box for Windows) | 官方 GitHub Releases(.exe) |
 | Linux | SFL(sing-box for Linux) | 官方 GitHub Releases(.deb/.rpm/.pkg.tar.zst) |
 
 另有 CLI 形态(`sing-box` 命令行)支持全部平台,适用于无图形界面的服务器/网关场景。
-
-> 注:因 Apple 商店政策,SFM 不在 Mac App Store 分发,请从官方发布页获取;
-> 桌面客户端与服务器同为锁版配套,导入本仓库生成的配置即可(见下)。
 
 ## 产物
 

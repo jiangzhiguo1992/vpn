@@ -200,3 +200,5 @@ uci set dhcp.@dnsmasq[0].port='<部署输出中的原值>' && uci commit dhcp
 | 网页打不开但 ping 通 | DNS 链路问题:确认 dnsmasq 已让位(第 5 节)、53 被 sing-box 接管 |
 | (旁路由形态)国外站不通/解析异常 | 设备 DNS 未指向盒子,DNS 查询走主路由可能被污染;把网关与 DNS 都指向盒子(见 1.1 节) |
 | 大面积超时/疑似自环 | 见第 7.4:查本地 DNS 残留与 sing-box 日志 |
+| 应用连接报 Operation not permitted | auto_redirect 的 TCP redirect 承接在无完整 fw4 语义的受限环境(如 Docker 容器模拟)不可用;真机 OpenWrt 为官方推荐路径,一般无此问题。若真机复现:将 tun 入站的 `auto_redirect` 置 false(流量改走策略路由主路径,演练验证代理功能不受影响) |
+| 国外站打不开、日志见 DoH 请求 EOF | 模板 DoH 上游 1.1.1.1 为单点:网络/服务器到 1.1.1.1 连通差时国外域名解析全挂(国内直连正常)。先确认服务端可达性,确认后把模板 dns-proxy 的 server 换成可达 DoH(如 8.8.8.8),重跑 make gen 与部署 |

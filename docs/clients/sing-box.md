@@ -116,6 +116,6 @@ remote 规则集(首次启动自动下载,experimental.cache_file 落盘缓存,�
   > `"set_system_proxy": true` 只适用于 CLI/服务器等用户态场景(实测可用);
   > SFM 内该字段会导致启动失败(exit status 7,NE 沙盒无 networksetup 权限,
   > 参见 SagerNet/sing-box issue #3692),勿加。
-- **导入后无法连接**:确认服务器安全组放行(见 server.md 第 3 步);
+- **导入后无法连接**:确认服务器安全组放行(见 docs/server.md 第 1 步);
   连接日志报 timeout 优先查端口放行,报 TLS/Reality 握手失败查伪装站点可达性。
 - **节点较多想分组**:移动端 app 内按节点名(hk-01-vless 等)分组即可。

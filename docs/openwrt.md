@@ -19,6 +19,33 @@
 > 2026-09 状态:本变体参数依据 sing-box 官方 TUN 文档与 OpenWrt 社区实践,
 > **未经 OpenWrt 真机验证**;部署后按[真机验证清单](#9-真机验证清单)逐项确认。
 
+### 1.1 拓扑形态与架构(软路由 / 旁路由 / 二合一)
+
+配置与部署脚本**不区分拓扑与 CPU 架构**——接管只认"流量是否经过盒子"。
+
+**架构**:`sing-box-openwrt.json` 与部署脚本均架构无关;内核由部署脚本经官方源
+自动安装,opkg/apk 按盒子架构(arm/aarch64/x86_64 等)选包,无需指定;主流架构
+官方源均有 sing-box 包,极小众/过老架构缺失时会明确报错(见第 10 节 FAQ)。
+
+**拓扑**:
+
+| 形态 | 接入方式 | 说明与注意 |
+|---|---|---|
+| 软路由(主网关) | 盒子作主路由(拨号/DHCP),设备默认网关即盒子 | 零配置全接管,本文档主场景 |
+| 旁路由(旁路网关) | 主路由继续拨号与 DHCP;**内网设备的网关与 DNS 都指向盒子**(或盒子开 DHCP、下发自身为网关+DNS) | 网关指向让流量经过盒子;DNS 必须同指盒子,否则国外域名经主路由 DNS 解析可能被污染/泄漏;fw4 默认允许 lan 转发、盒子不做 NAT(出站由主路由 masquerade),一般无需改防火墙 |
+| 二合一路由 | 同软路由,叠加其它服务(AP/NAS/Docker 等) | 接管不受影响;注意 tun 网段与叠加服务网段(如 Docker bridge)不冲突(见第 7 节坑 2) |
+
+**DNS 让位(脚本 9/9)在三种形态下的行为**:
+
+- 盒子自己跑 DHCP(软路由,或旁路由形态由盒子下发):dnsmasq 正常让位,53 归 sing-box
+- 盒子不开 DHCP(旁路由、主路由管 DHCP):dnsmasq 若仍在跑(仅本地解析、无
+  DHCP),脚本正常让位,DNS 归 sing-box;若 dnsmasq 已停用/无配置则自动跳过——
+  两种都不误伤。把 DNS 指向盒子的设备,其 53 流量经 auto_redirect 劫持进
+  sing-box
+
+**旁路由验证要点**:设备把网关+DNS 指向盒子后,按第 9 节清单逐项验收;访问
+盒子/主路由管理页(LuCI)走局域网直连规则,不受接管影响。
+
 ## 2 前置要求
 
 - 盒子:OpenWrt 23.05+(fw4);24.10(opkg)或 25.x(apk)均可,部署脚本自动识别包管理器
@@ -99,7 +126,8 @@ dnsmasq 的 DNS 停用(`port='0'`),sing-box 经 auto_redirect 接管 53:
 
 影响与恢复:
 
-- 路由器本地域名解析(.lan 主机名)不可用,LuCI 等用 IP 访问即可
+- 盒子本地域名解析(.lan 主机名)不可用,LuCI 等用 IP 访问即可
+  (旁路由形态:仅指向盒子的设备受影响,主路由与其它设备不受影响)
 - 恢复 dnsmasq DNS:执行部署时打印的原值命令(`uci set dhcp.@dnsmasq[0].port='<原值>'`
   `&& uci commit dhcp && /etc/init.d/dnsmasq restart`);原状未显式配置端口时
   可 `uci delete dhcp.@dnsmasq[0].port && uci commit dhcp`;备份在
@@ -156,6 +184,11 @@ uci set dhcp.@dnsmasq[0].port='<部署输出中的原值>' && uci commit dhcp
 - [ ] 盒子重启后 sing-box 自启(`logread | grep sing-box` 确认无手动干预)
 - [ ] 盒子有端口转发/DDNS 时:规则仍生效(auto_redirect 冲突项)
 - [ ] 重跑 `vpn openwrt` 幂等,配置刷新生效;部署输出无 FATAL 检出
+- [ ] (旁路由形态)设备网关与 DNS 均指向盒子后:被接管设备国内外正常;未指向
+      盒子的设备(仍走主路由)不被代理——分流边界符合预期
+- [ ] (旁路由形态)DHCP 唯一:盒子与主路由不同时下发 DHCP(双网关冲突);
+      由主路由下发时,盒子 dnsmasq 的 DHCP 应关闭(让位步骤只禁 DNS 不禁 DHCP,
+      需手动在 dhcp 配置停用或删除 LAN 的 DHCP 服务)
 
 ## 10 排障 FAQ
 
@@ -165,4 +198,5 @@ uci set dhcp.@dnsmasq[0].port='<部署输出中的原值>' && uci commit dhcp
 | 全部不通 | `logread \| grep sing-box` 查错误;先 `sing-box check -c /etc/sing-box/config.json` |
 | 国内通、国外不通 | 隧道握手失败:节点变更/服务器不可达;`logread` 查 ERROR,换 auto 组节点或重跑部署 |
 | 网页打不开但 ping 通 | DNS 链路问题:确认 dnsmasq 已让位(第 5 节)、53 被 sing-box 接管 |
+| (旁路由形态)国外站不通/解析异常 | 设备 DNS 未指向盒子,DNS 查询走主路由可能被污染;把网关与 DNS 都指向盒子(见 1.1 节) |
 | 大面积超时/疑似自环 | 见第 7.4:查本地 DNS 残留与 sing-box 日志 |

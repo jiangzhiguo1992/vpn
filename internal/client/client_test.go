@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -194,6 +195,133 @@ func TestRenderSingBox_结构(t *testing.T) {
 	if got := walk(m, "route", "rules", "2", "ip_is_private"); got != true {
 		t.Fatal("缺 ip_is_private 直连规则")
 	}
+	// 通用版 inbounds 锚点:仅 mixed,绝不能混入 tun(占位化注入防回归)
+	inbounds, _ := m["inbounds"].([]any)
+	if len(inbounds) != 1 {
+		t.Fatalf("通用版 inbounds 数量 = %d, want 1(仅 mixed)", len(inbounds))
+	}
+	if got := walk(inbounds[0], "type"); got != "mixed" {
+		t.Fatalf("通用版 inbounds[0].type = %v, want mixed", got)
+	}
+	lp, ok := walk(inbounds[0], "listen_port").(json.Number)
+	if !ok || lp.String() != "7890" {
+		t.Fatalf("通用版 inbounds[0].listen_port = %v, want 7890", walk(inbounds[0], "listen_port"))
+	}
+	if strings.Contains(string(data), `"type": "tun"`) {
+		t.Fatal("通用版不应含 tun inbound")
+	}
+}
+
+// TestRenderSingBoxSFM_结构 SFM 专用版:inbounds 为 mixed+tun 且 tun
+// 字段正确;outbounds 与通用版一致(双版本仅 inbounds 不同,防漂移)。
+func TestRenderSingBoxSFM_结构(t *testing.T) {
+	nodes := fixtureNodes()
+	data, err := RenderSingBoxSFM(nodes)
+	if err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	m := parseJSONMap(t, data)
+	inbounds, _ := m["inbounds"].([]any)
+	if len(inbounds) != 2 {
+		t.Fatalf("inbounds 数量 = %d, want 2(mixed+tun)", len(inbounds))
+	}
+	tun, _ := inbounds[1].(map[string]any)
+	if tun["type"] != "tun" || tun["tag"] != "tun-in" {
+		t.Fatalf("inbounds[1] 应为 tun: %v", tun)
+	}
+	if tun["auto_route"] != true || tun["strict_route"] != true {
+		t.Fatal("tun 应 auto_route/strict_route=true(全接管)")
+	}
+	// 系统代理卡片依赖 platform.http_proxy(parseJSONMap 用 UseNumber,
+	// server_port 为 json.Number)
+	platform, _ := tun["platform"].(map[string]any)
+	hp, _ := platform["http_proxy"].(map[string]any)
+	if hp == nil || hp["enabled"] != true || hp["server"] != "127.0.0.1" {
+		t.Fatalf("tun platform.http_proxy 配置错误: %v", hp)
+	}
+	hpPort, ok := hp["server_port"].(json.Number)
+	if !ok || hpPort.String() != "7890" {
+		t.Fatalf("tun platform.http_proxy.server_port = %v, want 7890", hp["server_port"])
+	}
+	// 双端口对等:http_proxy.server_port 必须与 mixed listen_port 一致
+	// (两处模板常量各自硬编码,防只改一处造成漂移)
+	mixedPort, ok2 := walk(inbounds[0], "listen_port").(json.Number)
+	if !ok2 || mixedPort.String() != hpPort.String() {
+		t.Fatalf("mixed listen_port(%v) 与 http_proxy.server_port(%v) 不对等", mixedPort, hpPort)
+	}
+	// 与通用版对照:outbounds 完全一致(仅 inbounds 不同)
+	plain, err := RenderSingBox(nodes)
+	if err != nil {
+		t.Fatalf("通用版渲染失败: %v", err)
+	}
+	mPlain := parseJSONMap(t, plain)
+	if !reflect.DeepEqual(m["outbounds"], mPlain["outbounds"]) {
+		t.Fatalf("SFM 版与通用版 outbounds 不一致\nSFM: %v\nplain: %v",
+			m["outbounds"], mPlain["outbounds"])
+	}
+}
+
+// checkTunVariant 桌面 tun 变体共享断言:inbounds=[mixed,tun]、tun 基础
+// 字段(auto_route/strict_route)、outbounds 与通用版一致;extra 校验平台
+// 特有字段(值可为标量或嵌套结构,DeepEqual 比较)。
+func checkTunVariant(t *testing.T, data, plain []byte, extra map[string]any) {
+	t.Helper()
+	m := parseJSONMap(t, data)
+	inbounds, _ := m["inbounds"].([]any)
+	if len(inbounds) != 2 {
+		t.Fatalf("inbounds 数量 = %d, want 2(mixed+tun)", len(inbounds))
+	}
+	tun, _ := inbounds[1].(map[string]any)
+	if tun["type"] != "tun" || tun["tag"] != "tun-in" {
+		t.Fatalf("inbounds[1] 应为 tun: %v", tun)
+	}
+	if tun["auto_route"] != true || tun["strict_route"] != true {
+		t.Fatal("tun 应 auto_route/strict_route=true(全接管)")
+	}
+	for k, v := range extra {
+		if !reflect.DeepEqual(tun[k], v) {
+			t.Fatalf("tun[%q] = %v, want %v", k, tun[k], v)
+		}
+	}
+	if !reflect.DeepEqual(m["outbounds"], parseJSONMap(t, plain)["outbounds"]) {
+		t.Fatalf("tun 变体与通用版 outbounds 不一致\ntun: %v\nplain: %v",
+			m["outbounds"], parseJSONMap(t, plain)["outbounds"])
+	}
+}
+
+// TestRenderSingBoxSFW_结构 Windows 版:基础 tun,无 platform 段
+// (http_proxy 所在字段,Apple 平台专属;结构断言免疫用户数据误报)。
+func TestRenderSingBoxSFW_结构(t *testing.T) {
+	nodes := fixtureNodes()
+	data, err := RenderSingBoxSFW(nodes)
+	if err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	plain, err := RenderSingBox(nodes)
+	if err != nil {
+		t.Fatalf("通用版渲染失败: %v", err)
+	}
+	checkTunVariant(t, data, plain, nil)
+	m := parseJSONMap(t, data)
+	tun := m["inbounds"].([]any)[1].(map[string]any)
+	if _, has := tun["platform"]; has {
+		t.Fatal("SFW 版不应含 platform(http_proxy 所在字段,Apple 平台专属)")
+	}
+}
+
+// TestRenderSingBoxSFL_结构 Linux 版:基础 tun + auto_redirect(nftables,
+// 官方推荐;内核不支持时可删该字段)。
+func TestRenderSingBoxSFL_结构(t *testing.T) {
+	nodes := fixtureNodes()
+	data, err := RenderSingBoxSFL(nodes)
+	if err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	plain, err := RenderSingBox(nodes)
+	if err != nil {
+		t.Fatalf("通用版渲染失败: %v", err)
+	}
+	checkTunVariant(t, data, plain, map[string]any{"auto_redirect": true})
 }
 
 // TestRenderSingBox_H2受信 受信证书节点渲染 server_name 且 insecure=false。

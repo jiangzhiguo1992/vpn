@@ -11,7 +11,7 @@
 //     复用已有凭据,产物不变);中途失败也尽力保存已回填凭据(重跑
 //     复用,不会密钥翻新导致已分发客户端失效)
 //   - 产物文件权限:含凭据的(config.json/links.txt/sub.txt/clash.yaml/
-//     sing-box.json/清单)一律 0600,仅属主可读写;编排与脚本文件
+//     sing-box*.json/清单)一律 0600,仅属主可读写;编排与脚本文件
 //     0644/0755 由各生成函数决定
 //   - 子命令独立 flag 集,无全局 flag 污染
 //
@@ -124,8 +124,8 @@ func runGen(args []string) error {
 	return nil
 }
 
-// writeClientArtifacts 渲染并写盘客户端产物(links/sub/clash/sing-box,
-// 全部含节点凭据,0600)。
+// writeClientArtifacts 渲染并写盘客户端产物(links/sub/clash 与 sing-box
+// 四产物,全部含节点凭据,0600)。
 func writeClientArtifacts(outDir string, nodes []conf.Node) error {
 	if len(nodes) == 0 {
 		return fmt.Errorf("无客户端节点可导出(清单为空)")
@@ -149,6 +149,20 @@ func writeClientArtifacts(outDir string, nodes []conf.Node) error {
 	if err != nil {
 		return err
 	}
+	// 桌面 GUI 全接管变体(官方桌面客户端均为纯内核,需 tun 才接管系统流量):
+	// SFM(macOS)/SFW(Windows)/SFL(Linux),见 internal/client/singbox.go
+	singBoxSFMJSON, err := client.RenderSingBoxSFM(nodes)
+	if err != nil {
+		return err
+	}
+	singBoxSFWJSON, err := client.RenderSingBoxSFW(nodes)
+	if err != nil {
+		return err
+	}
+	singBoxSFLJSON, err := client.RenderSingBoxSFL(nodes)
+	if err != nil {
+		return err
+	}
 	files := []struct {
 		name string
 		data []byte
@@ -157,6 +171,9 @@ func writeClientArtifacts(outDir string, nodes []conf.Node) error {
 		{"sub.txt", []byte(sub)},
 		{"clash.yaml", clashYAML},
 		{"sing-box.json", append(singBoxJSON, '\n')},
+		{"sing-box-sfm.json", append(singBoxSFMJSON, '\n')},
+		{"sing-box-sfw.json", append(singBoxSFWJSON, '\n')},
+		{"sing-box-sfl.json", append(singBoxSFLJSON, '\n')},
 	}
 	for _, f := range files {
 		if err := writeFile0600(filepath.Join(outDir, f.name), f.data); err != nil {
@@ -187,7 +204,10 @@ func printSummary(outDir string, inv *conf.Inventory) {
 	sb.WriteString("  links.txt      全部节点分享链接(剪贴板/扫码导入任意客户端)\n")
 	sb.WriteString("  sub.txt        通用订阅(支持订阅导入的客户端)\n")
 	sb.WriteString("  clash.yaml     Clash 系客户端(Clash Verge Rev/mihomo/OpenClash)\n")
-	sb.WriteString("  sing-box.json  sing-box 官方客户端(SFI/SFA/CLI)\n")
+	sb.WriteString("  sing-box.json      sing-box 官方客户端通用版(SFI/SFA/CLI)\n")
+	sb.WriteString("  sing-box-sfm.json  sing-box 官方桌面 SFM 版(macOS TUN 全接管)\n")
+	sb.WriteString("  sing-box-sfw.json  sing-box 官方桌面 SFW 版(Windows TUN 全接管)\n")
+	sb.WriteString("  sing-box-sfl.json  sing-box 官方桌面 SFL 版(Linux TUN 全接管)\n")
 	fmt.Print(sb.String())
 }
 

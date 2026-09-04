@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -78,6 +79,7 @@ func TestRunGen_端到端(t *testing.T) {
 	// 2. 产物齐全
 	wantFiles := []string{
 		"links.txt", "sub.txt", "clash.yaml", "sing-box.json",
+		"sing-box-sfm.json", "sing-box-sfw.json", "sing-box-sfl.json",
 		"servers/hk-01/config.json", "servers/hk-01/docker-compose.yml",
 		"servers/hk-01/deploy.sh", "servers/hk-01/cert.sh",
 		"servers/jp-01/config.json", "servers/jp-01/deploy.sh",
@@ -144,6 +146,49 @@ func TestRunGen_客户端配置可解析(t *testing.T) {
 	if len(outbounds) != 6 {
 		t.Fatalf("outbounds 数量 = %d, want 6", len(outbounds))
 	}
+	// SFM 专用版:合法 JSON、含 tun inbound(auto_route + platform.http_proxy)
+	sfm, _ := os.ReadFile(filepath.Join(outDir, "sing-box-sfm.json"))
+	var ms map[string]any
+	if err := json.Unmarshal(sfm, &ms); err != nil {
+		t.Fatalf("sing-box-sfm.json 不是合法 JSON: %v", err)
+	}
+	inbounds, _ := ms["inbounds"].([]any)
+	if len(inbounds) != 2 {
+		t.Fatalf("sing-box-sfm.json inbounds 数量 = %d, want 2(mixed+tun)", len(inbounds))
+	}
+	tun, _ := inbounds[1].(map[string]any)
+	if tun["type"] != "tun" || tun["auto_route"] != true {
+		t.Fatalf("sing-box-sfm.json 缺 tun inbound(auto_route): %v", tun)
+	}
+	platform, _ := tun["platform"].(map[string]any)
+	if platform == nil {
+		t.Fatal("sing-box-sfm.json tun 缺 platform.http_proxy(系统代理卡片依赖)")
+	}
+	// 双版本 outbounds 一致(仅 inbounds 不同;类型敏感比较,防数字误改字符串)
+	if !reflect.DeepEqual(ms["outbounds"], m["outbounds"]) {
+		t.Fatal("sing-box-sfm.json 与 sing-box.json 的 outbounds 不一致")
+	}
+	// 桌面其它平台变体(sfw/sfl):合法 JSON、含 tun、outbounds 与通用版一致
+	for _, name := range []string{"sing-box-sfw.json", "sing-box-sfl.json"} {
+		b, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatalf("读 %s: %v", name, err)
+		}
+		var mv map[string]any
+		if err := json.Unmarshal(b, &mv); err != nil {
+			t.Fatalf("%s 不是合法 JSON: %v", name, err)
+		}
+		iv, _ := mv["inbounds"].([]any)
+		if len(iv) != 2 {
+			t.Fatalf("%s inbounds 数量 = %d, want 2(mixed+tun)", name, len(iv))
+		}
+		if tv, _ := iv[1].(map[string]any); tv["type"] != "tun" {
+			t.Fatalf("%s 缺 tun inbound", name)
+		}
+		if !reflect.DeepEqual(mv["outbounds"], m["outbounds"]) {
+			t.Fatalf("%s 与 sing-box.json 的 outbounds 不一致", name)
+		}
+	}
 	clash, _ := os.ReadFile(filepath.Join(outDir, "clash.yaml"))
 	out := string(clash)
 	for _, want := range []string{"jp-01-vless", "hk-01-vless", "hk-01-h2", "MATCH,PROXY"} {
@@ -202,6 +247,9 @@ func TestRunGen_产物权限(t *testing.T) {
 		{"sub.txt", 0o600},
 		{"clash.yaml", 0o600},
 		{"sing-box.json", 0o600},
+		{"sing-box-sfm.json", 0o600},
+		{"sing-box-sfw.json", 0o600},
+		{"sing-box-sfl.json", 0o600},
 		{"servers/hk-01/deploy.sh", 0o755},
 	}
 	for _, tc := range cases {

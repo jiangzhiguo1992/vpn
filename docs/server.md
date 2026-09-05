@@ -16,7 +16,7 @@ macOS / Linux / Windows(10 1809+,需启用内置 OpenSSH 客户端)均可,只需
 | openssl | 服务器上生成自签证书(可选,服务器侧需要) | `make doctor` 自动检查 |
 
 ```bash
-cd <本项目目录>
+# cd <本项目目录>
 make doctor    # 自动诊断环境（Go 版本、代理），全绿即可继续
 make check     # build + vet + test + fmt 全量验证(改动后必跑)
 ```

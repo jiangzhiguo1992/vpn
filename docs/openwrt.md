@@ -25,15 +25,15 @@ make gen       # 生成全部产物(含 dist/sing-box-openwrt.json);清单缺失
 SSH 免密配置(未配置时,一次性):
 
 ```bash
-ssh-keygen -t ed25519                    # 已有密钥可跳过
+# ssh-keygen -t ed25519                  # 已有密钥可跳过
 ssh-copy-id -p 2222 root@192.168.1.1     # 输入一次盒子密码后即免密;SSH 端口 22 时可省 -p
 ```
 
 ## 2 一键部署
 
 ```bash
-make deploy-openwrt HOST=用户名@局域网IP PORT=端口  # 自定义 user@IP + SSH 端口
-# make deploy-openwrt HOST=192.168.1.1              # 常用形态(root用户 SSH 端口 22)
+make deploy-openwrt HOST=用户名@局域网IP PORT=端口   # 自定义 user@IP + SSH 端口
+# make deploy-openwrt HOST=192.168.1.1            # 常用形态(root用户 SSH 端口 22)
 ```
 
 脚本在盒子上依次做(幂等,可重复执行):

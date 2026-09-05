@@ -282,7 +282,7 @@ func TestWriteArtifacts_证书模式(t *testing.T) {
 	// 受信证书含通配符,不比对防误报)
 	for _, want := range []string{
 		"openssl x509 -noout -pubkey",
-		"openssl pkey -pubout",
+		"openssl pkey -passin pass: -pubout",
 		"cert.pem 与 key.pem 不匹配",
 		"-checkend 2592000",
 		"-ext subjectAltName",
@@ -380,6 +380,23 @@ func TestDeployScript_证书分支(t *testing.T) {
 	}
 	if strings.Contains(sh2, "for p in 8443") {
 		t.Fatal("无 h2 时不应放行 8443")
+	}
+}
+
+// TestDeployScript_运行判定 7b 判定必须同时检查 running 与 RestartCount:
+// restart 策略的崩溃循环中进程每次重启的存活瞬间状态是 running,单查
+// 状态会被 crash-loop 假通过(实测:端口被占时容器 running/restarting
+// 交替,单查 ^running$ 误报成功)。
+func TestDeployScript_运行判定(t *testing.T) {
+	sh, err := deployScript(fixtureServer(t))
+	if err != nil {
+		t.Fatalf("deployScript: %v", err)
+	}
+	if !strings.Contains(sh, "{{.RestartCount}}") {
+		t.Fatal("7b 判定应检查 RestartCount(防 crash-loop 的 running 窗口假通过)")
+	}
+	if !strings.Contains(sh, "^running|0$") {
+		t.Fatal("7b 判定应要求 running 且 RestartCount=0")
 	}
 }
 

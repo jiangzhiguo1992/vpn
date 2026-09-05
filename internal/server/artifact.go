@@ -122,6 +122,13 @@ func composeYAML(s *conf.Server) string {
     container_name: sing-box
     network_mode: host
     restart: unless-stopped
+    # json-file 驱动无默认上限会无限写盘(Reality 端口被扫描时握手日志
+    # 刷屏,数月吃满小盘 VPS),10m x 3 轮转
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - ./config.json:%s:ro%s
     command: run -c %s
@@ -153,6 +160,11 @@ func deployScript(s *conf.Server) (string, error) {
 	script := fmt.Sprintf(`#!/bin/sh
 set -e
 cd "$(dirname "$0")"
+
+# 权限收紧兜底:scp 在部分平台/旧协议下按远端 umask 建文件(常为 644),
+# config.json 含 Reality 私钥与 H2 密码,必须 0600,此处显式收紧消除
+# 平台差异(证书私钥文件的收紧在下方证书就位段,仅 H2 通道存在)
+chmod 600 config.json
 
 # 部署用户可能是 root 或普通 sudoer:docker/防火墙命令统一走 sudo -n
 # (root 直过、NOPASSWD 免密直过、需密码时快速失败,非交互不卡等待);
@@ -235,6 +247,21 @@ $SUDO docker compose up -d --force-recreate
 sleep 2
 $SUDO docker compose ps
 $SUDO docker compose logs --tail=10
+
+# 7b. 运行状态判定:ps/logs 对 crash-loop 容器退出码恒 0,不做判定时
+#     「部署成功」是假象——第 5 步 check 只拦语法错误,端口占用/证书
+#     损坏/镜像问题要到进程启动才暴露,此时旧容器已被 force-recreate
+#     移除。判定 running 且 RestartCount=0:restart 策略的崩溃循环中
+#     进程每次重启的存活瞬间状态是 running,单查状态会被 crash-loop
+#     假通过(实测:端口被占时容器在 running/restarting 间交替);
+#     RestartCount 在 force-recreate 后从 0 起,健康运行恒为 0
+sleep 2
+if ! $SUDO docker inspect -f '{{.State.Status}}|{{.RestartCount}}' sing-box 2>/dev/null | grep -q '^running|0$'; then
+  echo "==> 容器未稳定运行(非 running 或 RestartCount>0,可能 crash-loop,见上方日志)" >&2
+  echo "==> 端口被占/证书损坏等运行时问题需先解决,再重跑本脚本" >&2
+  exit 1
+fi
+echo "==> sing-box 运行中 ✓"
 `,
 		tcpList, udpList, tcpList, udpList,
 		certBlock,
@@ -262,9 +289,30 @@ func certBlockScript(s *conf.Server) (string, error) {
 	}
 	if h.ServerName == "" {
 		// 自签模式:证书对缺失时用 cert.sh 自动生成
-		// (证书存在性成对检查:单边缺失如 key.pem 被误删时重新生成,
+		// (证书就绪判定:存在性成对检查(单边缺失重新生成)之外,以 openssl 可解析性兜底
+		// cert.sh 非原子写的中断窗口(损坏文件重生成;-checkend 0 顺带覆盖 10 年
+		// 过期翻新),openssl 缺失时回退纯存在性检查,
 		// 防 compose 挂载缺文件导致容器启动失败)
-		return fmt.Sprintf(`if { [ ! -f %[1]s ] || [ ! -f %[2]s ]; }; then
+		return fmt.Sprintf(`# 就绪判定:openssl 可解析(x509/pkey,防 cert.sh 非原子写中断留下的
+# 半截文件)且 cert/key 为同一对(防错配残留——各自可解析但非一对时
+# 容器 TLS 加载失败且无自愈;公钥比对不匹配即重生成,自签覆盖零副作用,
+# 客户端 insecure 无感知)。-passin pass: 对加密私钥确定性失败而非交互
+# prompt(非交互部署安全;加密私钥残留走重生成)
+CERTS_READY=false
+if command -v openssl >/dev/null 2>&1; then
+  if openssl x509 -checkend 0 -noout -in %[1]s >/dev/null 2>&1 && openssl pkey -passin pass: -noout -in %[2]s >/dev/null 2>&1; then
+    CERT_PUB=$(openssl x509 -noout -pubkey -in %[1]s 2>/dev/null) || CERT_PUB=
+    KEY_PUB=$(openssl pkey -passin pass: -pubout -in %[2]s 2>/dev/null) || KEY_PUB=
+    if [ -n "$CERT_PUB" ] && [ "$CERT_PUB" = "$KEY_PUB" ]; then
+      CERTS_READY=true
+    else
+      echo "==> 证书与私钥不匹配或公钥读取失败,重新生成自签证书对 ..."
+    fi
+  fi
+elif [ -f %[1]s ] && [ -f %[2]s ]; then
+  CERTS_READY=true
+fi
+if [ "$CERTS_READY" != "true" ]; then
   echo "==> 生成自签证书 ..."
   sh cert.sh
 fi
@@ -291,9 +339,12 @@ fi
   echo "==> 请把证书与私钥命名为 %[1]s/%[2]s 放入本目录后重跑 deploy.sh" >&2
   exit 1
 fi
+# 受信模式 key.pem 由用户本地放置后 scp 上传,权限可能随平台为 644,
+# 收紧到 0600(自签模式 key.pem 已由证书生成脚本收紧)
+chmod 600 %[2]s
 if command -v openssl >/dev/null 2>&1; then
   CERT_PUB=$(openssl x509 -noout -pubkey -in %[1]s 2>/dev/null) || CERT_PUB=
-  KEY_PUB=$(openssl pkey -pubout -in %[2]s 2>/dev/null) || KEY_PUB=
+  KEY_PUB=$(openssl pkey -passin pass: -pubout -in %[2]s 2>/dev/null) || KEY_PUB=
   if [ -n "$CERT_PUB" ] && [ "$KEY_PUB" != "$CERT_PUB" ]; then
     echo "==> 警告:cert.pem 与 key.pem 不匹配(不是同一对证书)" >&2
     echo "==> 请重新放置匹配的证书对后重跑 deploy.sh" >&2

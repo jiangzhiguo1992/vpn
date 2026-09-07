@@ -82,7 +82,7 @@ make deploy
 | macOS | sing-box 官方(SFM) | sing-box-sfm.json | Hiddify |
 | Linux 桌面 | sing-box 官方(SFL) | sing-box-sfl.json | Hiddify |
 | Android | Hiddify | links.txt(链接/扫码) | sing-box(SFA) |
-| iOS/iPadOS | Hiddify | links.txt(链接/扫码) | sing-box(SFI) / Shadowrocket 等 |
+| iOS/iPadOS | Hiddify | links.txt(链接/扫码) | sing-box(SFI) |
 | 网关盒子(OpenWrt) | sing-box(官方 OpenWrt 包,裸部署) | sing-box-openwrt.json | - |
 | Android TV 等 | Hiddify 或对应 Android 客户端 | links.txt | - |
 
@@ -99,7 +99,7 @@ iOS 无 Hiddify 条件时用区外商店的 sing-box(SFI)或 Shadowrocket 等第
 
 | 能力 | Hiddify | sing-box 官方 |
 |---|---|---|
-| 国内直连分流 | 内置规则 | sing-box.json 内置(remote rule-set,国内直连) |
+| 国内直连分流 | 内置规则 | 内置(remote rule-set,国内直连) |
 | 广告拦截 | 内置 | 内置(同 rule-set 机制,连接层 reject) |
 | 按应用分流 | 内置 | 视平台 |
 | 订阅更新 | URL 订阅 | 配置/订阅导入 |
